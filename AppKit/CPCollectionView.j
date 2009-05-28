@@ -61,6 +61,24 @@
     @param indices the indices to obtain drag types
     @return an array of drag types (CPString)
 */
+
+
+/*
+    Items will be arranged in rows stacked vertically. The collection views height will be adjusted to fit the items.
+    @group CPCollectionViewOrientation
+    @global
+*/
+CPCollectionViewVerticalOrientation = 0;
+/*
+    Items will be arranged in columns stacked horizontally. The collection views width will be adjusted to fit the items.
+    @group CPCollectionViewOrientation
+    @global
+*/
+CPCollectionViewHorizontalOrientation = 1;
+
+
+
+
 @implementation CPCollectionView : CPView
 {
     CPArray                 _content;
@@ -77,7 +95,7 @@
     CGSize                  _minItemSize;
     CGSize                  _maxItemSize;
     
-    float                   _tileWidth;
+    float                   _tileLength;
     
     BOOL                    _isSelectable;
     BOOL                    _allowsMultipleSelection;
@@ -86,11 +104,13 @@
     
     CGSize                  _itemSize;
     
-    float                   _horizontalMargin;
-    float                   _verticalMargin;
+    float                   _itemMargin;
+    float                   _divisionMargin;
     
-    unsigned                _numberOfRows;
-    unsigned                _numberOfColumns;
+    unsigned                _numberOfDivisions;
+    unsigned                _itemsPerDivision;
+
+    int                     _orientation;
     
     id                      _delegate;
 }
@@ -110,8 +130,9 @@
         _minItemSize = CGSizeMakeZero();
         _maxItemSize = CGSizeMakeZero();
         
-        _verticalMargin = 5.0;
-        _tileWidth = -1.0;
+        _orientation = CPCollectionViewVerticalOrientation;
+        _divisionMargin = 5.0;
+        _tileLength = -1.0;
         
         _selectionIndexes = [CPIndexSet indexSet];
         _allowsEmptySelection = YES;
@@ -339,34 +360,78 @@
     [self tile];
 }
 
+// Private convenience functions to access dimensions taking account of collection view orientation 
+
+/* @ignore */
+- (float)_lengthFromSize:(CGSize)aSize
+{
+    return (_orientation === CPCollectionViewVerticalOrientation) ? aSize.width : aSize.height;
+}
+
+/* @ignore */
+- (float)_breadthFromSize:(CGSize)aSize
+{
+    return (_orientation === CPCollectionViewVerticalOrientation) ? aSize.height : aSize.width;
+}
+
+/* @ignore */
+- (CGSize)_sizeFromLength:(float)aLength breadth:(float)aBreadth
+{
+    return (_orientation === CPCollectionViewVerticalOrientation) ? CGSizeMake(aLength, aBreadth) : CGSizeMake(aBreadth, aLength);
+}
+
+/* @ignore */
+- (float)_lengthFromPoint:(CGPoint)aPoint
+{
+    return (_orientation === CPCollectionViewVerticalOrientation) ? aPoint.x : aPoint.y;
+}
+
+/* @ignore */
+- (float)_breadthFromPoint:(CGPoint)aPoint
+{
+    return (_orientation === CPCollectionViewVerticalOrientation) ? aPoint.y : aPoint.x;
+}
+
+/* @ignore */
+- (CGPoint)_pointFromLength:(float)aLength breadth:(float)aBreadth
+{
+    return (_orientation === CPCollectionViewVerticalOrientation) ? CGPointMake(aLength, aBreadth) : CGPointMake(aBreadth, aLength);
+}
+
+
 /* @ignore */
 - (void)tile
 {
-    var width = CGRectGetWidth([self bounds]);
+    var length = [self _lengthFromSize:[self bounds].size];
         
-    if (![_content count] || width == _tileWidth)
+    if (![_content count] || length == _tileLength)
         return;
         
-    // We try to fit as many views per row as possible.  Any remaining space is then 
+    // We try to fit as many views per division as possible.  Any remaining space is then 
     // either proportioned out to the views (if their minSize != maxSize) or used as
     // margin
-    var itemSize = CGSizeMakeCopy(_minItemSize);
+    var itemSizeLength = [self _lengthFromSize:_minItemSize],
+        itemSizeBreadth = [self _breadthFromSize:_minItemSize];
     
-    _numberOfColumns = MAX(1.0, FLOOR(width / itemSize.width));
+    _itemsPerDivision = MAX(1.0, FLOOR(length / itemSizeLength));
     
-    if (_maxNumberOfColumns > 0)
-        _numberOfColumns = MIN(_maxNumberOfColumns, _numberOfColumns);
+    var maxItemsPerDivision = (_orientation === CPCollectionViewVerticalOrientation) ?  _maxNumberOfColumns : _maxNumberOfRows;
+
+    if (maxItemsPerDivision > 0)
+        _itemsPerDivision = MIN(maxItemsPerDivision, _itemsPerDivision);
             
-    var remaining = width - _numberOfColumns * itemSize.width,
-        itemsNeedSizeUpdate = NO;
+    var remaining = length - _itemsPerDivision * itemSizeLength,
+        itemsNeedSizeUpdate = NO,
+        maxItemSizeLength = [self _lengthFromSize:_maxItemSize];
         
-    if (remaining > 0 && itemSize.width < _maxItemSize.width)
-        itemSize.width = MIN(_maxItemSize.width, itemSize.width + FLOOR(remaining / _numberOfColumns));
+    if (remaining > 0 && itemSizeLength < maxItemSizeLength)
+        itemSizeLength = MIN(maxItemSizeLength, itemSizeLength + FLOOR(remaining / _itemsPerDivision));
     
-    // When we ONE column and a non-integral width, the FLOORing above can cause the item width to be smaller than the total width.
-    if (_maxNumberOfColumns == 1 && itemSize.width < _maxItemSize.width && itemSize.width < width)
-        itemSize.width = MIN(_maxItemSize.width, width);
+    // When we have ONE division and a non-integral length, the FLOORing above can cause the item length to be smaller than the total length.
+    if (maxItemsPerDivision == 1 && itemSizeLength < maxItemSizeLength && itemSizeLength < length)
+        itemSizeLength = MIN(maxItemSizeLength, length);
     
+    var itemSize = [self _sizeFromLength:itemSizeLength breadth:itemSizeBreadth];
     if (!CGSizeEqualToSize(_itemSize, itemSize))
     {
         _itemSize = itemSize;
@@ -379,34 +444,34 @@
     if (_maxNumberOfColumns > 0 && _maxNumberOfRows > 0)
         count = MIN(count, _maxNumberOfColumns * _maxNumberOfRows);
     
-    _numberOfRows = CEIL(count / _numberOfColumns);
+    _numberOfDivisions = CEIL(count / _itemsPerDivision);
 
-    _horizontalMargin = FLOOR((width - _numberOfColumns * itemSize.width) / (_numberOfColumns + 1));
+    _itemMargin = FLOOR((length - _itemsPerDivision * itemSizeLength) / (_itemsPerDivision + 1));
         
-    var x = _horizontalMargin,
-        y = -itemSize.height;
+    var itemOffset = _itemMargin,
+        divisionOffset = -itemSizeBreadth;
     
     for (; index < count; ++index)
     {
-        if (index % _numberOfColumns == 0)
+        if (index % _itemsPerDivision == 0)
         {
-            x = _horizontalMargin;
-            y += _verticalMargin + itemSize.height;
+            itemOffset = _itemMargin;
+            divisionOffset += _divisionMargin + itemSizeBreadth;
         }
         
         var view = [_items[index] view];
         
-        [view setFrameOrigin:CGPointMake(x, y)];
+        [view setFrameOrigin:[self _pointFromLength:itemOffset breadth:divisionOffset]];
         
         if (itemsNeedSizeUpdate)
             [view setFrameSize:_itemSize];
             
-        x += itemSize.width + _horizontalMargin;
+        itemOffset += itemSizeLength + _itemMargin;
     }
     
-    _tileWidth = width;
-    [self setFrameSize:CGSizeMake(width, y + itemSize.height + _verticalMargin)];
-    _tileWidth = -1.0;
+    _tileLength = length;
+    [self setFrameSize:[self _sizeFromLength:length breadth:divisionOffset + itemSizeBreadth + _divisionMargin]];
+    _tileLength = -1.0;
 }
 
 - (void)resizeSubviewsWithOldSize:(CGSize)aSize
@@ -464,7 +529,7 @@
 */
 - (unsigned)numberOfRows
 {
-    return _numberOfRows;
+    return (_orientation === CPCollectionViewVerticalOrientation) ? _numberOfDivisions : _itemsPerDivision;
 }
 
 /*!
@@ -473,7 +538,7 @@
 
 - (unsigned)numberOfColumns
 {
-    return _numberOfColumns;
+    return (_orientation === CPCollectionViewVerticalOrientation) ? _itemsPerDivision : _numberOfDivisions;
 }
 
 /*!
@@ -529,9 +594,9 @@
 - (void)mouseDown:(CPEvent)anEvent
 {
     var location = [self convertPoint:[anEvent locationInWindow] fromView:nil],
-        row = FLOOR(location.y / (_itemSize.height + _verticalMargin)),
-        column = FLOOR(location.x / (_itemSize.width + _horizontalMargin)),
-        index = row * _numberOfColumns + column;
+        division = FLOOR([self _breadthFromPoint:location] / ([self _breadthFromSize:_itemSize] + _divisionMargin)),
+        item = FLOOR([self _lengthFromPoint:location] / ([self _lengthFromSize:_itemSize] + _itemMargin)),
+        index = division * _itemsPerDivision + item;
         
     if (index >= 0 && index < _items.length)
         [self setSelectionIndexes:[CPIndexSet indexSetWithIndex:index]];
@@ -585,27 +650,77 @@
 // Cappuccino Additions
 
 /*!
-    Sets the collection view's vertical spacing between elements.
-    @param aVerticalMargin the number of pixels to place between elements
+    Sets the orientation for the collection view. With the default <code>CPCollectionViewVerticalOrientation</code>
+    the view has fixed width, items are arranged in rows starting at the top and the height is varied to fit the items.
+    With <code>CPCollectionViewHorizontalOrientation</code> the view has fixed height, items are arranged in 
+    columns starting on the left and the width is varied. 
+    @param anOrientation the orientation to use
 */
 
-- (void)setVerticalMargin:(float)aVerticalMargin
+- (void)setOrientation:(CPCollectionViewOrientation)anOrientation
 {
-    if (_verticalMargin == aVerticalMargin)
+    if (_orientation === anOrientation)
+        return;
+
+    _orientation = anOrientation;
+
+    [self tile];
+}
+
+/*!
+    Gets the orientation for the collection view.
+*/
+
+- (CPCollectionViewOrientation)orientation
+{
+    return _orientation;
+}
+
+/*!
+    Sets the collection view's spacing between element divisions.
+    @param aDivisionMargin the number of pixels to place between element divisions
+*/
+
+- (void)setDivisionMargin:(float)aDivisionMargin
+{
+    if (_divisionMargin == aDivisionMargin)
         return;
     
-    _verticalMargin = aVerticalMargin;
+    _divisionMargin = aDivisionMargin;
     
     [self tile];
 }
 
 /*!
-    Gets the collection view's current vertical spacing between elements.
+    Gets the collection view's current spacing between element divisions.
+*/
+
+- (float)divisionMargin
+{
+    return _divisionMargin;
+}
+
+/*!
+    @deprecated use setDivisionMargin: instead
+
+    Sets the collection view's spacing between element divisions.
+    @param aVerticalMargin the number of pixels to place between elements
+*/
+
+- (void)setVerticalMargin:(float)aVerticalMargin
+{
+    [self setDivisionMargin:aVerticalMargin];
+}
+
+/*!
+    @deprecated use divisionMargin instead
+
+    Gets the collection view's current spacing between element divisions.
 */
 
 - (float)verticalMargin
 {
-    return _verticalMargin;
+    return [self divisionMargin];
 }
 
 /*!
@@ -716,9 +831,12 @@
 
 @end
 
+
+
 var CPCollectionViewMinItemSizeKey      = @"CPCollectionViewMinItemSizeKey",
     CPCollectionViewMaxItemSizeKey      = @"CPCollectionViewMaxItemSizeKey",
     CPCollectionViewVerticalMarginKey   = @"CPCollectionViewVerticalMarginKey";
+    CPCollectionViewOrientationKey      = @"CPCollectionViewOrientationKey";
 
 
 @implementation CPCollectionView (CPCoding)
@@ -738,8 +856,9 @@ var CPCollectionViewMinItemSizeKey      = @"CPCollectionViewMinItemSizeKey",
         _minItemSize = [aCoder decodeSizeForKey:CPCollectionViewMinItemSizeKey];
         _maxItemSize = [aCoder decodeSizeForKey:CPCollectionViewMaxItemSizeKey];
 
-        _verticalMargin = [aCoder decodeSizeForKey:CPCollectionViewVerticalMarginKey];
-        _tileWidth = -1.0;
+        _orientation = [aCoder decodeIntForKey:CPCollectionViewOrientationKey];
+        _divisionMargin = [aCoder decodeSizeForKey:CPCollectionViewVerticalMarginKey];
+        _tileLength = -1.0;
 
         _selectionIndexes = [CPIndexSet indexSet];
     }
@@ -754,7 +873,8 @@ var CPCollectionViewMinItemSizeKey      = @"CPCollectionViewMinItemSizeKey",
     [aCoder encodeSize:_minItemSize forKey:CPCollectionViewMinItemSizeKey];
     [aCoder encodeSize:_maxItemSize forKey:CPCollectionViewMaxItemSizeKey];
 
-    [aCoder encodeSize:_verticalMargin forKey:CPCollectionViewVerticalMarginKey];
+    [aCoder encodeInt:_orientation forKey:CPCollectionViewOrientationKey];
+    [aCoder encodeSize:_divisionMargin forKey:CPCollectionViewVerticalMarginKey];
 }
 
 @end
