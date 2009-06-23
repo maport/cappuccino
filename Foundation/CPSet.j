@@ -5,7 +5,22 @@
  * Created by Bailey Carlson
  * Extended by Ross Boucher
  * Extended by Nabil Elisa
- * 
+ * Copyright 2008, 280 North, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
  * TODO: Needs to implement CPCoding, CPCopying.
  */
  
@@ -15,7 +30,9 @@
 @import "CPEnumerator.j"
 
 /*!
+    @class CPSet
     @ingroup foundation
+    @brief An unordered collection of objects.
 */
 @implementation CPSet : CPObject
 {
@@ -215,7 +232,7 @@
 */
 - (BOOL)containsObject:(id)anObject
 {
-    if (_contents[[anObject hash]] && [_contents[[anObject hash]] isEqual:anObject])
+    if (_contents[[anObject UID]] && [_contents[[anObject UID]] isEqual:anObject])
         return YES;
     
     return NO;
@@ -355,7 +372,7 @@
 */
 - (void)addObject:(id)anObject
 {
-    _contents[[anObject hash]] = anObject;
+    _contents[[anObject UID]] = anObject;
     _count++;
 }
 
@@ -363,12 +380,12 @@
     Adds to the receiver each object contained in a given array that is not already a member.
     @param array An array of objects to add to the receiver.
 */
-- (void)addObjectsFromArray:(CPArray)array
+- (void)addObjectsFromArray:(CPArray)objects
 {
-    for (var i = 0, count = array.length; i < count; i++) 
-    {
-        [self addObject:array[i]];
-    }
+    var count = [objects count];
+
+    while (count--)
+        [self addObject:objects[count]];
 }
 
 /*
@@ -379,9 +396,17 @@
 {
     if ([self containsObject:anObject])
     {
-        delete _contents[[anObject hash]];
+        delete _contents[[anObject UID]];
         _count--;
     }
+}
+
+- (void)removeObjectsInArray:(CPArray)objects
+{
+    var count = [objects count];
+
+    while (count--)
+        [self removeObject:objects[count]];
 }
 
 /*
@@ -465,6 +490,15 @@ var CPSetObjectsKey = @"CPSetObjectsKey";
 }
 
 @end
+
+/*!
+    @class CPMutableSet
+    @ingroup compatability
+
+    This class is just an empty subclass of CPSet.
+    CPSet already implements mutable methods and
+    this class only exists for source compatability.
+*/
 
 @implementation CPMutableSet : CPSet
 @end

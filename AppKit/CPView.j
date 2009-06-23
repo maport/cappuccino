@@ -143,8 +143,6 @@ var DOMElementPrototype         = nil,
     BOOL                _postsBoundsChangedNotifications;
     BOOL                _inhibitFrameAndBoundsChangedNotifications;
     
-    CPString            _displayHash;
-    
 #if PLATFORM(DOM)
     DOMElement          _DOMElement;
     DOMElement          _DOMContentsElement;
@@ -179,6 +177,9 @@ var DOMElementPrototype         = nil,
     CPTheme             _theme;
     JSObject            _themeAttributes;
     unsigned            _themeState;
+
+    JSObject            _ephemeralSubviewsForNames;
+    CPSet               _ephereralSubviews;
 
     // Key View Support
     CPView              _nextKeyView;
@@ -241,8 +242,6 @@ var DOMElementPrototype         = nil,
         _opacity = 1.0;
         _isHidden = NO;
         _hitTests = YES;
-
-        _displayHash = [self hash];
 
 #if PLATFORM(DOM)
         _DOMElement = DOMElementPrototype.cloneNode(false);
@@ -1208,7 +1207,7 @@ var DOMElementPrototype         = nil,
 
         amount = 0 - _DOMImageParts.length;
     }
-    
+
     if (amount > 0)
         while (amount--)
         {
@@ -1236,16 +1235,16 @@ var DOMElementPrototype         = nil,
     else
     {
         var slices = [patternImage imageSlices],
-            count = slices.length,
+            count = MIN(_DOMImageParts.length, slices.length),
             frameSize = _frame.size;
-        
+
         while (count--)
         {
             var image = slices[count],
                 size = _DOMImageSizes[count] = image ? [image size] : _CGSizeMakeZero();
             
             CPDOMDisplayServerSetStyleSize(_DOMImageParts[count], size.width, size.height);
-            
+
             _DOMImageParts[count].style.background = image ? "url(\"" + [image filename] + "\")" : "";
         }
         
@@ -1469,7 +1468,7 @@ setBoundsOrigin:
 */
 - (void)registerForDraggedTypes:(CPArray)pasteboardTypes
 {
-    if (!pasteboardTypes)
+    if (!pasteboardTypes || ![pasteboardTypes count])
         return;
 
     var theWindow = [self window];
@@ -1535,13 +1534,13 @@ setBoundsOrigin:
 - (void)setNeedsDisplayInRect:(CPRect)aRect
 {
 #if PLATFORM(DOM)
-    var hash = [[self class] hash],
-        hasCustomDrawRect = CustomDrawRectViews[hash];
+    var UID = [[self class] UID],
+        hasCustomDrawRect = CustomDrawRectViews[UID];
     
     if (!hasCustomDrawRect && typeof hasCustomDrawRect === "undefined")
     {
         hasCustomDrawRect = [self methodForSelector:@selector(drawRect:)] != [CPView instanceMethodForSelector:@selector(drawRect:)];
-        CustomDrawRectViews[hash] = hasCustomDrawRect;
+        CustomDrawRectViews[UID] = hasCustomDrawRect;
     }
 
     if (!hasCustomDrawRect)
@@ -1666,13 +1665,13 @@ setBoundsOrigin:
     _needsLayout = YES;
     
 #if PLATFORM(DOM)
-    var hash = [[self class] hash],
-        hasCustomLayoutSubviews = CustomLayoutSubviewsViews[hash];
+    var UID = [[self class] UID],
+        hasCustomLayoutSubviews = CustomLayoutSubviewsViews[UID];
     
     if (hasCustomLayoutSubviews === undefined)
     {
         hasCustomLayoutSubviews = [self methodForSelector:@selector(layoutSubviews)] != [CPView instanceMethodForSelector:@selector(layoutSubviews)];
-        CustomLayoutSubviewsViews[hash] = hasCustomLayoutSubviews;
+        CustomLayoutSubviewsViews[UID] = hasCustomLayoutSubviews;
     }
 
     if (!hasCustomLayoutSubviews)
@@ -2184,6 +2183,54 @@ setBoundsOrigin:
     return [_themeAttributes[aName] valueForState:_themeState];
 }
 
+- (CPView)createEphemeralSubviewNamed:(CPString)aViewName
+{
+    return nil;
+}
+
+- (CGRect)rectForEphemeralSubviewNamed:(CPString)aViewName
+{
+    return _CGRectMakeZero();
+}
+
+- (CPView)layoutEphemeralSubviewNamed:(CPString)aViewName 
+                           positioned:(CPWindowOrderingMode)anOrderingMode
+      relativeToEphemeralSubviewNamed:(CPString)relativeToViewName
+{
+    if (!_ephemeralSubviewsForNames)
+    {
+        _ephemeralSubviewsForNames = {};
+        _ephemeralSubviews = [CPSet set];
+    }
+
+    var frame = [self rectForEphemeralSubviewNamed:aViewName];
+
+    if (frame && !_CGRectIsEmpty(frame))
+    {
+        if (!_ephemeralSubviewsForNames[aViewName])
+        {
+            _ephemeralSubviewsForNames[aViewName] = [self createEphemeralSubviewNamed:aViewName];
+
+            [_ephemeralSubviews addObject:_ephemeralSubviewsForNames[aViewName]];
+
+            if (_ephemeralSubviewsForNames[aViewName])
+                [self addSubview:_ephemeralSubviewsForNames[aViewName] positioned:anOrderingMode relativeTo:_ephemeralSubviewsForNames[relativeToViewName]];
+        }
+
+        if (_ephemeralSubviewsForNames[aViewName])
+            [_ephemeralSubviewsForNames[aViewName] setFrame:frame];
+    }
+    else if (_ephemeralSubviewsForNames[aViewName])
+    {
+        [_ephemeralSubviewsForNames[aViewName] removeFromSuperview];
+
+        [_ephemeralSubviews removeObject:_ephemeralSubviewsForNames[aViewName]];
+        delete _ephemeralSubviewsForNames[aViewName];
+    }
+
+    return _ephemeralSubviewsForNames[aViewName];
+}
+
 @end
 
 var CPViewAutoresizingMaskKey       = @"CPViewAutoresizingMask",
@@ -2234,6 +2281,10 @@ var CPViewAutoresizingMaskKey       = @"CPViewAutoresizingMask",
         _subviews = [aCoder decodeObjectForKey:CPViewSubviewsKey] || [];
         _superview = [aCoder decodeObjectForKey:CPViewSuperviewKey];
         
+        // FIXME: Should we encode/decode this?
+        _registeredDraggedTypes = [CPSet set];
+        _registeredDraggedTypesArray = [];
+
         _autoresizingMask = [aCoder decodeIntForKey:CPViewAutoresizingMaskKey] || CPViewNotSizable;
         _autoresizesSubviews = ![aCoder containsValueForKey:CPViewAutoresizesSubviewsKey] || [aCoder decodeBoolForKey:CPViewAutoresizesSubviewsKey];
 
@@ -2256,7 +2307,6 @@ var CPViewAutoresizingMaskKey       = @"CPViewAutoresizingMask",
             //_subviews[index]._superview = self;
         }
 #endif
-        _displayHash = [self hash];
 
         if ([aCoder containsValueForKey:CPViewIsHiddenKey])
             [self setHidden:[aCoder decodeBoolForKey:CPViewIsHiddenKey]];
@@ -2287,6 +2337,7 @@ var CPViewAutoresizingMaskKey       = @"CPViewAutoresizingMask",
         }
 
         [self setNeedsDisplay:YES];
+        [self setNeedsLayout];
     }
 
     return self;
@@ -2310,8 +2361,20 @@ var CPViewAutoresizingMaskKey       = @"CPViewAutoresizingMask",
     if (_window !== nil)
         [aCoder encodeConditionalObject:_window forKey:CPViewWindowKey];
 
-    if (_subviews.length > 0)
-        [aCoder encodeObject:_subviews forKey:CPViewSubviewsKey];
+    var count = [_subviews count],
+        encodedSubviews = _subviews;
+
+    if (count > 0 && [_ephemeralSubviews count] > 0)
+    {
+        encodedSubviews = [encodedSubviews copy];
+
+        while (count--)
+            if ([_ephemeralSubviews containsObject:encodedSubviews[count]])
+                encodedSubviews.splice(count, 1);
+    }
+
+    if (encodedSubviews.length > 0)
+        [aCoder encodeObject:encodedSubviews forKey:CPViewSubviewsKey];
 
     // This will come out nil on the other side with decodeObjectForKey:
     if (_superview !== nil)

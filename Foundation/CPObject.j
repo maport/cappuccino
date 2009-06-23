@@ -21,8 +21,9 @@
  */
 
 /*!
-    @ingroup foundation
     @class CPObject
+    @ingroup foundation
+    @brief The root class from which most classes are subclassed.
     
     CPObject is the root class for most Cappuccino classes. Like in Objective-C,
     you have to declare parent class explicitly in Objective-J, so your custom
@@ -90,6 +91,11 @@ CPLog(@"Got some class: %@", inst);</pre>
 {
 //    CPLog("calling alloc on " + self.name + ".");
     return class_createInstance(self);
+}
+
++ (id)allocWithCoder:(CPCoder)aCoder
+{
+    return [self alloc];
 }
 
 /*!
@@ -263,7 +269,7 @@ CPLog(@"Got some class: %@", inst);</pre>
 */
 - (CPString)description
 {
-    return "<" + isa.name + " 0x" + [CPString stringWithHash:[self hash]] + ">";
+    return "<" + isa.name + " 0x" + [CPString stringWithHash:[self UID]] + ">";
 }
 
 // Sending Messages
@@ -351,7 +357,7 @@ CPLog(@"Got some class: %@", inst);</pre>
 {
     [CPException raise:CPInvalidArgumentException reason:
         (class_isMetaClass(isa) ? "+" : "-") + " [" + [self className] + " " + aSelector + "] unrecognized selector sent to " +
-        (class_isMetaClass(isa) ? "class" : "instance") + " 0x" + [CPString stringWithHash:[self hash]]];
+        (class_isMetaClass(isa) ? "class" : "instance") + " 0x" + [CPString stringWithHash:[self UID]]];
 }
 
 // Archiving
@@ -459,6 +465,14 @@ CPLog(@"Got some class: %@", inst);</pre>
 */
 - (unsigned)hash
 {
+    return [self UID];
+}
+
+- (unsigned)UID
+{
+    if (typeof self.__address === "undefined")
+        self.__address = _objj_generateObjectHash();
+
     return __address;
 }
 
@@ -468,7 +482,7 @@ CPLog(@"Got some class: %@", inst);</pre>
 */
 - (BOOL)isEqual:(id)anObject
 {
-    return self === anObject || [self hash] === [anObject hash];
+    return self === anObject || [self UID] === [anObject UID];
 }
 
 /*!
