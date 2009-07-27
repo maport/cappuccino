@@ -853,14 +853,17 @@ var CPCollectionViewMinItemSizeKey      = @"CPCollectionViewMinItemSizeKey",
         _cachedItems = [];
 
         _itemSize = CGSizeMakeZero();
-        _minItemSize = [aCoder decodeSizeForKey:CPCollectionViewMinItemSizeKey];
-        _maxItemSize = [aCoder decodeSizeForKey:CPCollectionViewMaxItemSizeKey];
+        _minItemSize = [aCoder decodeSizeForKey:CPCollectionViewMinItemSizeKey] || CGSizeMakeZero();
+        _maxItemSize = [aCoder decodeSizeForKey:CPCollectionViewMaxItemSizeKey] || CGSizeMakeZero();
 
         _orientation = [aCoder decodeIntForKey:CPCollectionViewOrientationKey];
         _divisionMargin = [aCoder decodeSizeForKey:CPCollectionViewVerticalMarginKey];
         _tileLength = -1.0;
 
         _selectionIndexes = [CPIndexSet indexSet];
+        
+        _allowsEmptySelection = YES;
+        _isSelectable = YES;
     }
 
     return self;
@@ -870,8 +873,11 @@ var CPCollectionViewMinItemSizeKey      = @"CPCollectionViewMinItemSizeKey",
 {
     [super encodeWithCoder:aCoder];
 
-    [aCoder encodeSize:_minItemSize forKey:CPCollectionViewMinItemSizeKey];
-    [aCoder encodeSize:_maxItemSize forKey:CPCollectionViewMaxItemSizeKey];
+    if (!CGSizeEqualToSize(_minItemSize, CGSizeMakeZero()))
+      [aCoder encodeSize:_minItemSize forKey:CPCollectionViewMinItemSizeKey];
+      
+    if (!CGSizeEqualToSize(_maxItemSize, CGSizeMakeZero()))
+      [aCoder encodeSize:_maxItemSize forKey:CPCollectionViewMaxItemSizeKey];
 
     [aCoder encodeInt:_orientation forKey:CPCollectionViewOrientationKey];
     [aCoder encodeSize:_divisionMargin forKey:CPCollectionViewVerticalMarginKey];
