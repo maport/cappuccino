@@ -29,6 +29,8 @@
 @import "CPDocumentController.j"
 @import "CPThemeBlend.j"
 @import "CPCibLoading.j"
+@import "CPPlatform.j"
+
 
 var CPMainCibFile               = @"CPMainCibFile",
     CPMainCibFileHumanFriendly  = @"Main cib file base name";
@@ -772,14 +774,18 @@ function CPApplicationMain(args, namedArgs)
     [principalClass sharedApplication];
 
     //FIXME?
-    if (!args && !namedArgs)
+    if (!args)
     {
-        var args = [CPApp arguments],
-            searchParams = window.location.search.substring(1).split("&");
-            namedArgs = [CPDictionary dictionary];
+        var args = [CPApp arguments];
 
         if([args containsObject:"debug"])
             CPLogRegister(CPLogPopup);
+    }
+
+    if (!namedArgs)
+    {
+        var searchParams = window.location.search.substring(1).split("&");
+            namedArgs = [CPDictionary dictionary];
 
         for(var i=0; i<searchParams.length; i++)
         {
@@ -805,7 +811,7 @@ var _CPAppBootstrapperActions = nil;
 
 + (void)actions
 {
-    return [@selector(loadDefaultTheme), @selector(loadMainCibFile)];
+    return [@selector(bootstrapPlatform), @selector(loadDefaultTheme), @selector(loadMainCibFile)];
 }
 
 + (void)performActions
@@ -822,6 +828,11 @@ var _CPAppBootstrapperActions = nil;
     }
 
     [CPApp run];
+}
+
++ (BOOL)bootstrapPlatform
+{
+    return [CPPlatform bootstrap];
 }
 
 + (BOOL)loadDefaultTheme
