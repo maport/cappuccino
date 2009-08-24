@@ -1,8 +1,8 @@
 /*
- * NSClipView.j
- * nib2cib
+ * CPCibOutletConnector.j
+ * AppKit
  *
- * Created by Thomas Robinson.
+ * Created by Francisco Tolmasky.
  * Copyright 2008, 280 North, Inc.
  *
  * This library is free software; you can redistribute it and/or
@@ -20,45 +20,29 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-@import <AppKit/CPClipView.j>
+@import "CPCibConnector.j"
 
 
-@implementation CPClipView (CPCoding)
-
-- (id)NS_initWithCoder:(CPCoder)aCoder
+@implementation CPCibOutletConnector : CPCibConnector
 {
-    if (self = [super NS_initWithCoder:aCoder])
+}
+
+- (void)establishConnection
+{
+    try
     {
-        _documentView = [aCoder decodeObjectForKey:"NSDocView"];
-        
-        if ([aCoder containsValueForKey:"NSBGColor"])
-            [self setBackgroundColor:[aCoder decodeObjectForKey:"NSBGColor"]];
-        
-        //var flags = [aCoder decodeIntForKey:"NScvFlags"];
+        [_source setValue:_destination forKey:_label];
     }
-    
-    return self;
-}
+    catch (anException)
+    {
+        if ([anException name] === CPUndefinedKeyException)
+            CPLog.warn(@"Could not connect the outlet " + _label + @" of target of class " + [_source className]);
 
-- (BOOL)NS_isFlipped
-{
-    return YES;
-}
-
-@end
-
-@implementation NSClipView : CPClipView
-{
-}
-
-- (id)initWithCoder:(CPCoder)aCoder
-{
-    return [self NS_initWithCoder:aCoder];
-}
-
-- (Class)classForKeyedArchiver
-{
-    return [CPClipView class];
+        else
+            throw anException;
+    }
 }
 
 @end
+
+@implementation _CPCibOutletConnector : CPCibOutletConnector { } @end
