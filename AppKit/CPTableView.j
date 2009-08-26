@@ -76,7 +76,7 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
 
 
 #define NUMBER_OF_COLUMNS() (_tableColumns.length)
-//#define ENSURE_COLUMN_WIDTHS()
+#define UPDATE_COLUMN_RANGES_IF_NECESSARY() if (_dirtyTableColumnRangeIndex !== CPNotFound) [self _recalculateTableColumnRanges];
 
 @implementation _CPTableDrawView : CPView
 {
@@ -118,6 +118,7 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
     CPInteger   _dirtyTableColumnRangeIndex;
     CPInteger   _numberOfHiddenColumns;
 
+    BOOL        _reloadAllRows;
     Object      _objectValues;
     CPRange     _exposedRows;
     CPIndexSet  _exposedColumns;
@@ -262,10 +263,11 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
     if (!_dataSource)
         return;
 
+    _reloadAllRows = YES;
     _objectValues = { };
 
+    // This updates the size too.
     [self noteNumberOfRowsChanged];
-    [self _sizeToParent];
 
     [self setNeedsLayout];
     [self setNeedsDisplay:YES];
@@ -721,8 +723,7 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
     if (aColumnIndex < 0 || aColumnIndex >= NUMBER_OF_COLUMNS())
         return _CGRectMakeZero();
 
-    if (_dirtyTableColumnRangeIndex !== CPNotFound)
-        [self _recalculateTableColumnRanges];
+    UPDATE_COLUMN_RANGES_IF_NECESSARY();
 
     var range = _tableColumnRanges[aColumnIndex];
 
@@ -742,30 +743,27 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
 // O(1)
 - (CPRange)rowsInRect:(CGRect)aRect
 {
-    var bounds = nil,
-        firstRow = [self rowAtPoint:aRect.origin],
-        lastRow = [self rowAtPoint:_CGPointMake(0.0, _CGRectGetMaxY(aRect))];
+    // If we have no rows, then we won't intersect anything.
+    if (_numberOfRows <= 0)
+        return CPMakeRange(0, 0);
 
+    var bounds = [self bounds];
+
+    // No rows if the rect doesn't even intersect us.
+    if (!CGRectIntersectsRect(aRect, bounds))
+        return CPMakeRange(0, 0);
+
+    var firstRow = [self rowAtPoint:aRect.origin];
+
+    // first row has to be undershot, because if not we wouldn't be intersecting.
     if (firstRow < 0)
-    {
-        bounds = [self bounds];
+        firstRow = 0;
 
-        if (_CGRectGetMinY(aRect) < _CGRectGetMinY(bounds))
-            firstRow = 0;
-        else
-            firstRow = _numberOfRows - 1;
-    }
+    var lastRow = [self rowAtPoint:_CGPointMake(0.0, _CGRectGetMaxY(aRect))];
 
+    // last row has to be overshot, because if not we wouldn't be intersecting.
     if (lastRow < 0)
-    {
-        if (!bounds)
-            bounds = [self bounds];
-
-        if (_CGRectGetMaxY(aRect) < _CGRectGetMinY(bounds))
-            lastRow = 0;
-        else
-            lastRow = _numberOfRows - 1;
-    }
+        lastRow = _numberOfRows - 1;
 
     return CPMakeRange(firstRow, lastRow - firstRow + 1);
 }
@@ -809,8 +807,7 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
     if (!_CGRectContainsPoint(bounds, aPoint))
         return CPNotFound;
 
-    if (_dirtyTableColumnRangeIndex !== CPNotFound)
-        [self _recalculateTableColumnRanges];
+    UPDATE_COLUMN_RANGES_IF_NECESSARY();
 
     var x = aPoint.x,
         low = 0,
@@ -880,8 +877,7 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
 
     var superviewSize = [superview bounds].size;
 
-    if (_dirtyTableColumnRangeIndex !== CPNotFound)
-        [self _recalculateTableColumnRanges];
+    UPDATE_COLUMN_RANGES_IF_NECESSARY();
 
     var count = NUMBER_OF_COLUMNS();
 
@@ -897,8 +893,32 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
 {
     _numberOfRows = [_dataSource numberOfRowsInTableView:self];
 
-    [self setNeedsLayout];
+    [self tile];
 }
+
+- (void)tile
+{
+    UPDATE_COLUMN_RANGES_IF_NECESSARY();
+
+    // FIXME: variable row heights.
+    var width = _tableColumnRanges.length > 0 ? CPMaxRange([_tableColumnRanges lastObject]) : 0.0,
+        height = (_rowHeight + _intercellSpacing.height) * _numberOfRows,
+        superview = [self superview];
+
+    if ([superview isKindOfClass:[CPClipView class]])
+    {
+        var superviewSize = [superview bounds].size;
+
+        width = MAX(superviewSize.width, width);
+        height = MAX(superviewSize.height, height);
+    }
+
+    [self setFrameSize:_CGSizeMake(width, height)];
+
+    [self setNeedsLayout];
+    [self setNeedsDisplay:YES];
+}
+
 /*
     * - tile
     * - sizeToFit
@@ -916,23 +936,6 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
     * - setAutosaveName:
     * - setAutosaveTableColumns:
 */
-
-- (void)_sizeToParent
-{
-    var superviewSize = [[self superview] bounds].size;
-
-    if (_dirtyTableColumnRangeIndex !== CPNotFound)
-        [self _recalculateTableColumnRanges];
-
-    if (_tableColumnRanges.length > 0)
-        var naturalWidth = CPMaxRange([_tableColumnRanges lastObject]);
-
-    else
-        var naturalWidth = 0.0;
-
-    [self setFrameSize:_CGSizeMake( MAX(superviewSize.width, naturalWidth),
-                                    MAX(superviewSize.height, (_rowHeight + _intercellSpacing.height) * _numberOfRows))];
-}
 
 //Setting the Delegate:(id)aDelegate
 
@@ -1128,17 +1131,21 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
 
 - (void)load
 {
-    if (!_dataSource)
-    {
-        // remove?
-        return;
-    }
-
 //    if (!window.blah)
 //        return window.setTimeout(function() { window.blah = true; [self load]; window.blah = false}, 0.0);
 
  //   if (window.console && window.console.profile)
  //       console.profile("cell-load");
+
+    if (_reloadAllRows)
+    {
+        [self _unloadDataViewsInRows:_exposedRows columns:_exposedColumns];
+
+        _exposedRows = [CPIndexSet indexSet];
+        _exposedColumns = [CPIndexSet indexSet];
+
+        _reloadAllRows = NO;
+    }
 
     var exposedRect = [self _exposedRect],
         exposedRows = [CPIndexSet indexSetWithIndexesInRange:[self rowsInRect:exposedRect]],
@@ -1181,6 +1188,17 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
 
 //    [_tableDrawView setBounds:exposedRect];
     [_tableDrawView display];
+
+    // Now clear all the leftovers
+    // FIXME: this could be faster!
+    for (identifier in _cachedDataViews)
+    {
+        var dataViews = _cachedDataViews[identifier],
+            count = dataViews.length;
+
+        while (count--)
+            [dataViews[count] removeFromSuperview];
+    }
 
   //  if (window.console && window.console.profile)
 //        console.profileEnd("cell-load");
@@ -1234,6 +1252,8 @@ _cachedDataViews[dataView.identifier].push(dataView);
 
     [rows getIndexes:rowArray maxCount:-1 inIndexRange:nil];
     [columns getIndexes:columnArray maxCount:-1 inIndexRange:nil];
+
+    UPDATE_COLUMN_RANGES_IF_NECESSARY();
 
     var columnIndex = 0,
         columnsCount = columnArray.length;
@@ -1321,7 +1341,8 @@ _cachedDataViews[dataView.identifier].push(dataView);
     var exposedRows = [self rowsInRect:aRect],
         firstRow = exposedRows.location,
         lastRow = CPMaxRange(exposedRows) - 1,
-        colorIndex = MIN(exposedRows.length, colorCount);
+        colorIndex = MIN(exposedRows.length, colorCount),
+        heightFilled = 0.0;
 
     while (colorIndex--)
     {
@@ -1529,11 +1550,7 @@ _cachedDataViews[dataView.identifier].push(dataView);
 
 - (void)superviewFrameChanged:(CPNotification)aNotification
 {
-    [self _sizeToParent];
-
-    // Call this explicitly because *our* size may not change, but the exposedRect may change.
-    [self setNeedsDisplay:YES];
-    [self setNeedsLayout];
+    [self tile];
 }
 
 //
