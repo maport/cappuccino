@@ -41,17 +41,17 @@
 */
 @implementation CPWindowController : CPResponder
 {
-    CPWindow    _window;
+    CPWindow            _window;
 
-    CPDocument  _document;
-    BOOL        _shouldCloseDocument;
+    CPDocument          _document;
+    BOOL                _shouldCloseDocument;
 
-    id          _cibOwner;
-    CPString    _windowCibName;
-    CPString    _windowCibPath;
+    id                  _cibOwner;
+    CPString            _windowCibName;
+    CPString            _windowCibPath;
 
-    BOOL        _isWindowLoading;
-    BOOL        _shouldDisplayWindowWhenLoaded;
+    CPViewController    _viewController;
+    CPView              _viewControllerContainerView;
 }
 
 - (id)init
@@ -74,9 +74,6 @@
         [self setShouldCloseDocument:NO];
 
         [self setNextResponder:CPApp];
-
-        if (aWindow)
-            [self windowDidLoad];
     }
 
     return self;
@@ -127,36 +124,12 @@
 /*!
     Loads the window
 */
-- (BOOL)loadWindow
+- (void)loadWindow
 {
-    if ([self isWindowLoaded])
-        return YES;
+    if (_window)
+        return;
 
-    if (![self isWindowLoading])
-    {
-        _isWindowLoading = YES;
-
-        [self windowWillLoad];
-
-        [CPBundle loadCibFile:[self windowCibPath]
-            externalNameTable:[CPDictionary dictionaryWithObject:_cibOwner forKey:CPCibOwner]
-                 loadDelegate:self];
-    }
-
-    return NO;
-}
-
-- (void)cibDidFinishLoading:(CPCib)aCib
-{
-    if (_window === nil && _document !== nil && _cibOwner === _document)
-        [self setWindow:[_document valueForKey:@"window"]];
-
-    [self synchronizeWindowTitleWithDocumentName];
-
-    [self windowDidLoad];
-
-    if (_shouldDisplayWindowWhenLoaded)
-        [self showWindow:self];
+    [[CPBundle bundleForClass:[_cibOwner class]] loadCibFile:[self windowCibPath] externalNameTable:[CPDictionary dictionaryWithObject:_cibOwner forKey:CPCibOwner]];
 }
 
 /*!
@@ -165,13 +138,6 @@
 */
 - (@action)showWindow:(id)aSender
 {
-    if (![self loadWindow])
-    {
-        _shouldDisplayWindowWhenLoaded = YES;
-
-        return;
-    }
-
     var theWindow = [self window];
 
 	if ([theWindow respondsToSelector:@selector(becomesKeyOnlyIfNeeded)] && [theWindow becomesKeyOnlyIfNeeded])
@@ -189,18 +155,26 @@
     return _window !== nil;
 }
 
-- (BOOL)isWindowLoading
-{
-    return _isWindowLoading;
-}
-
 /*!
     Returns the window this object controls.
 */
 - (CPWindow)window
 {
     if (!_window)
-         [self loadWindow];
+    {
+        [self windowWillLoad];
+        [_document windowControllerWillLoadCib:self];
+
+        [self loadWindow];
+
+        if (_window === nil && [_cibOwner isKindOfClass:[CPDocument class]])
+            [self setWindow:[_cibOwner valueForKey:@"window"]];
+
+        [self windowDidLoad];
+        [_document windowControllerDidLoadCib:self];
+
+        [self synchronizeWindowTitleWithDocumentName];
+    }
 
     return _window;
 }
@@ -285,7 +259,65 @@
         [self setDocumentEdited:[_document isDocumentEdited]];
     }
 
+    var viewController = [_document viewControllerForWindowController:self];
+
+    if (viewController)
+        [self setViewController:viewController];
+
     [self synchronizeWindowTitleWithDocumentName];
+}
+
+- (void)setViewController:(CPViewController)aViewController
+{
+    var containerView = [self viewControllerContainerView] || [[self window] contentView],
+        view = [_viewController view],
+        frame = view ? [view frame] : [containerView bounds];
+
+    [view removeFromSuperview];
+
+    _viewController = aViewController;
+
+    view = [_viewController view];
+
+    if (view)
+    {
+        [view setFrame:frame];
+        [containerView addSubview:view];
+    }
+}
+
+- (void)setViewControllerContainerView:(CPView)aView
+{
+    _viewControllerContainerView = aView;
+}
+
+- (void)viewControllerContainerView
+{
+    return _viewControllerContainerView;
+}
+
+- (void)setViewController:(CPViewController)aViewController
+{
+    var containerView = [self viewControllerContainerView] || [[self window] contentView],
+        view = [_viewController view],
+        frame = view ? [view frame] : [containerView bounds];
+
+    [view removeFromSuperview];
+
+    _viewController = aViewController;
+
+    view = [_viewController view];
+
+    if (view)
+    {
+        [view setFrame:frame];
+        [containerView addSubview:view];
+    }
+}
+
+- (CPViewController)viewController
+{
+    return _viewController;
 }
 
 /* @ignore */

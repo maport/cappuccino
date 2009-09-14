@@ -258,6 +258,14 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
 
 //Loading Data
 
+- (void)reloadDataForRowIndexes:(CPIndexSet)rowIndexes columnIndexes:(CPIndexSet)columnIndexes
+{
+    [self reloadData];
+//    [_previouslyExposedRows removeIndexes:rowIndexes];
+//    [_previouslyExposedColumns removeIndexes:columnIndexes];
+}
+
+
 - (void)reloadData
 {
     if (!_dataSource)
@@ -474,7 +482,7 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
     if ([aTableColumn tableView] !== self)
         return;
 
-    var index = [_tableColumns indeOfObjectIdenticalTo:aTableColumn];
+    var index = [_tableColumns indexOfObjectIdenticalTo:aTableColumn];
 
     if (index === CPNotFound)
         return;
@@ -666,7 +674,15 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
 
 - (void)setCornerView:(CPView)aView
 {
+    if (_cornerView === aView)
+        return;
+
     _cornerView = aView;
+
+    var scrollView = [[self superview] superview];
+
+    if ([scrollView isKindOfClass:[CPScrollView class]] && [scrollView documentView] === self)
+        [scrollView _updateCornerAndHeaderView];
 }
 
 - (CPView)headerView
@@ -676,8 +692,23 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
 
 - (void)setHeaderView:(CPView)aHeaderView
 {
+    if (_headerView === aHeaderView)
+        return;
+
+    [_headerView setTableView:nil];
+
     _headerView = aHeaderView;
-    [_headerView setTableView:self];
+
+    if (_headerView)
+    {
+        [_headerView setTableView:self];
+        [_headerView setFrameSize:_CGSizeMake(aSize.width, [_headerView frame].size.height)];
+    }
+
+    var scrollView = [[self superview] superview];
+
+    if ([scrollView isKindOfClass:[CPScrollView class]] && [scrollView documentView] === self)
+        [scrollView _updateCornerAndHeaderView];
 }
 
 //Layout Support
@@ -857,10 +888,12 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
     return row;
 }
 
-- (CGRect)frameOfDataViewAtColumn:(CPInteger)aColumnIndex row:(CPInteger)aRowIndex
+- (CGRect)frameOfDataViewAtColumn:(CPInteger)aColumn row:(CPInteger)aRow
 {
-    var tableColumnRange = _tableColumns[aColumnIndex],
-        rectOfRow = [self rectOfRow:aRowIndex];
+    UPDATE_COLUMN_RANGES_IF_NECESSARY();
+
+    var tableColumnRange = _tableColumnRanges[aColumn],
+        rectOfRow = [self rectOfRow:aRow];
 
     return _CGRectMake(tableColumnRange.location, _CGRectGetMinY(rectOfRow), tableColumnRange.length, _CGRectGetHeight(rectOfRow));
 }
@@ -1233,10 +1266,8 @@ CPTableViewSolidHorizontalGridLineMask = 1 << 1;
                 dataView = _dataViewsForTableColumns[tableColumnUID][row];
 
             _dataViewsForTableColumns[tableColumnUID][row] = nil;
-if (!_cachedDataViews[dataView.identifier])
-_cachedDataViews[dataView.identifier] = [dataView];
-else
-_cachedDataViews[dataView.identifier].push(dataView);
+
+            [self _enqueueReusableDataView:dataView];
         }
     }
 }
@@ -1262,8 +1293,7 @@ _cachedDataViews[dataView.identifier].push(dataView);
     {
         var column = columnArray[columnIndex],
             tableColumn = _tableColumns[column],
-            tableColumnUID = [tableColumn UID],
-            tableColumnRange = _tableColumnRanges[column];
+            tableColumnUID = [tableColumn UID];
 
     if (!_dataViewsForTableColumns[tableColumnUID])
         _dataViewsForTableColumns[tableColumnUID] = [];
@@ -1274,13 +1304,9 @@ _cachedDataViews[dataView.identifier].push(dataView);
         for (; rowIndex < rowsCount; ++rowIndex)
         {
             var row = rowArray[rowIndex],
-                dataView = [tableColumn _newDataViewForRow:row],
-                rectOfRow = rowRects[row];
+                dataView = [self _newDataViewForRow:row tableColumn:tableColumn];
 
-            if (!rectOfRow)
-                rectOfRow = rowRects[row] = [self rectOfRow:row];
-
-            [dataView setFrame:_CGRectMake(tableColumnRange.location, _CGRectGetMinY(rectOfRow), tableColumnRange.length, _CGRectGetHeight(rectOfRow))];
+            [dataView setFrame:[self frameOfDataViewAtColumn:column row:row]];
             [dataView setObjectValue:[self _objectValueForTableColumn:tableColumn row:row]];
 
             if ([dataView superview] !== self)
@@ -1291,10 +1317,28 @@ _cachedDataViews[dataView.identifier].push(dataView);
     }
 }
 
+- (CPView)_newDataViewForRow:(CPInteger)aRow tableColumn:(CPTableColumn)aTableColumn
+{
+    return [aTableColumn _newDataViewForRow:aRow];
+}
+
+- (void)_enqueueReusableDataView:(CPView)aDataView
+{
+    // FIXME: yuck!
+    var identifier = aDataView.identifier;
+
+    if (!_cachedDataViews[identifier])
+        _cachedDataViews[identifier] = [aDataView];
+    else
+        _cachedDataViews[identifier].push(aDataView);
+}
+
 - (void)setFrameSize:(CGSize)aSize
 {
     [super setFrameSize:aSize];
-    [_headerView setFrameSize:CGSizeMake(aSize.width, [_headerView frame].size.height)];
+
+    if (_headerView)
+        [_headerView setFrameSize:_CGSizeMake(aSize.width, [_headerView frame].size.height)];
 }
 
 - (CGRect)exposedClipRect
@@ -1577,6 +1621,8 @@ _cachedDataViews[dataView.identifier].push(dataView);
     else
         _selectionAnchorRow = row;
 
+    _previouslySelectedRowIndexes = nil;
+
     [self _updateSelectionWithMouseAtRow:row];
 
     return YES;
@@ -1590,26 +1636,9 @@ _cachedDataViews[dataView.identifier].push(dataView);
 }
 
 - (void)stopTracking:(CGPoint)lastPoint at:(CGPoint)aPoint mouseIsUp:(BOOL)mouseIsUp
-{/*
-    _clickedRow = [self rowAtPoint:point];
-    _clickedColumn = [self columnAtPoint:point];
-
-    if ([anEvent clickCount] === 2)
-    {
-        CPLog.warn("edit?!");
-
-        [self sendAction:_doubleAction to:_target];
-    }
-    else
-    {
-        if (![_previousSelectedRowIndexes isEqualToIndexSet:_selectedRowIndexes])
-        {
-            [[CPNotificationCenter defaultCenter] postNotificationName:CPTableViewSelectionDidChangeNotification object:self userInfo:nil];
-        }
-
-        [self sendAction:_action to:_target];
-    }
-*/
+{
+    if (![_previouslySelectedRowIndexes isEqualToIndexSet:_selectedRowIndexes])
+        [self _noteSelectionDidChange];
 }
 
 - (void)_updateSelectionWithMouseAtRow:(CPInteger)aRow
@@ -1678,10 +1707,26 @@ _cachedDataViews[dataView.identifier].push(dataView);
     if ([newSelection isEqualToIndexSet:_selectedRowIndexes])
         return;
 
+    if (!_previouslySelectedRowIndexes)
+        _previouslySelectedRowIndexes = [_selectedRowIndexes copy];
+
     [self selectRowIndexes:newSelection byExtendingSelection:NO];
 
+    [self _noteSelectionIsChanging];
+}
+
+- (void)_noteSelectionIsChanging
+{
     [[CPNotificationCenter defaultCenter]
         postNotificationName:CPTableViewSelectionIsChangingNotification
+                      object:self
+                    userInfo:nil];
+}
+
+- (void)_noteSelectionDidChange
+{
+    [[CPNotificationCenter defaultCenter]
+        postNotificationName:CPTableViewSelectionDidChangeNotification
                       object:self
                     userInfo:nil];
 }

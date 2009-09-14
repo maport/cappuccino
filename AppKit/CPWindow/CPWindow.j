@@ -248,6 +248,7 @@ var CPWindowSaveImage       = nil,
     BOOL                                _hasShadow;
     BOOL                                _isMovableByWindowBackground;
 
+    BOOL                                _supportsMultipleDocuments;
     BOOL                                _isDocumentEdited;
     BOOL                                _isDocumentSaving;
 
@@ -439,6 +440,19 @@ CPTexturedBackgroundWindowMask
 + (Class)_windowViewClassForFullPlatformWindowStyleMask:(unsigned)aStyleMask
 {
     return _CPBorderlessBridgeWindowView;
+}
+
+- (void)setSupportsMultipleDocuments:(BOOL)shouldSupportMultipleDocuments
+{
+    shouldSupportMultipleDocuments = !!shouldSupportMultipleDocuments;
+
+    // FIXME: throw exception if window controller already has multiple documents and shouldSupportMultipleDocuments === NO
+    _supportsMultipleDocuments = shouldSupportMultipleDocuments;
+}
+
+- (BOOL)supportsMultipleDocuments
+{
+    return _supportsMultipleDocuments;
 }
 
 - (void)awakeFromCib
@@ -1849,7 +1863,10 @@ CPTexturedBackgroundWindowMask
 
     _autorecalculatesKeyViewLoop = shouldRecalculate;
     
-    [self _dirtyKeyViewLoop];
+    if (_keyViewLoopIsDirty)
+        [self recalculateKeyViewLoop];
+    else if (_autorecalculatesKeyViewLoop)
+        [self _dirtyKeyViewLoop];
 }
 
 - (BOOL)autorecalculatesKeyViewLoop
