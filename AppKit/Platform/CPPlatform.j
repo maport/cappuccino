@@ -31,6 +31,7 @@
 
 + (BOOL)supportsDragAndDrop
 {
+    return NO; // MP: Until native drag and drop works reliably cross-browser
     return CPFeatureIsCompatible(CPHTMLDragAndDropFeature);
 }
 
