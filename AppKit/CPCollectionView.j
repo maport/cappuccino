@@ -94,6 +94,8 @@ CPCollectionViewHorizontalOrientation = 1;
     CGSize                  _minItemSize;
     CGSize                  _maxItemSize;
 
+    CPArray                 _backgroundColors;
+
     float                   _tileLength;
     
     BOOL                    _isSelectable;
