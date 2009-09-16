@@ -26,7 +26,8 @@
 @import <Foundation/CPKeyedArchiver.j>
 @import <Foundation/CPKeyedUnarchiver.j>
 
-@import <AppKit/CPView.j>
+@import "CPView.j"
+@import "CPCollectionViewItem.j"
 
 
 /*! 
@@ -77,8 +78,6 @@ CPCollectionViewVerticalOrientation = 0;
 CPCollectionViewHorizontalOrientation = 1;
 
 
-
-
 @implementation CPCollectionView : CPView
 {
     CPArray                 _content;
@@ -94,7 +93,7 @@ CPCollectionViewHorizontalOrientation = 1;
     
     CGSize                  _minItemSize;
     CGSize                  _maxItemSize;
-    
+
     float                   _tileLength;
     
     BOOL                    _isSelectable;
@@ -131,6 +130,8 @@ CPCollectionViewHorizontalOrientation = 1;
         _itemSize = CGSizeMakeZero();
         _minItemSize = CGSizeMakeZero();
         _maxItemSize = CGSizeMakeZero();
+
+        [self setBackgroundColors:nil];
         
         _orientation = CPCollectionViewVerticalOrientation;
         _divisionMargin = 5.0;
@@ -152,7 +153,7 @@ CPCollectionViewHorizontalOrientation = 1;
 {
     _cachedItems = [];
     _itemData = nil;
-    _itemForDragging = anItem;//[CPKeyedUnarchiver unarchiveObjectWithData:_itemData];
+    _itemForDragging = nil;
     _itemPrototype = anItem;
 
     [self reloadContent];
@@ -595,6 +596,30 @@ CPCollectionViewHorizontalOrientation = 1;
     return _maxItemSize;
 }
 
+- (void)setBackgroundColors:(CPArray)backgroundColors
+{
+    if (_backgroundColors === backgroundColors)
+        return;
+
+    _backgroundColors = backgroundColors;
+
+    if (!_backgroundColors)
+        _backgroundColors = [CPColor whiteColor];
+
+    if ([_backgroundColors count] === 1)
+        [self setBackgroundColor:_backgroundColors[0]];
+
+    else
+        [self setBackgroundColor:nil];
+
+    [self setNeedsDisplay:YES];
+}
+
+- (CPArray)backgroundColors
+{
+    return _backgroundColors;
+}
+
 - (void)mouseUp:(CPEvent)anEvent
 {
     if ([_selectionIndexes count] && [anEvent clickCount] == 2 && [_delegate respondsToSelector:@selector(collectionView:didDoubleClickOnItemAtIndex:)])
@@ -621,29 +646,31 @@ CPCollectionViewHorizontalOrientation = 1;
 {
     if (![_delegate respondsToSelector:@selector(collectionView:dragTypesForItemsAtIndexes:)])
         return;
-        
+
     // If we don't have any selected items, we've clicked away, and thus the drag is meaningless.
     if (![_selectionIndexes count])
         return;
-        
+
     // Set up the pasteboard
     var dragTypes = [_delegate collectionView:self dragTypesForItemsAtIndexes:_selectionIndexes];
-    
+
     [[CPPasteboard pasteboardWithName:CPDragPboard] declareTypes:dragTypes owner:self];
-    
+
     var point = [self convertPoint:[anEvent locationInWindow] fromView:nil];
 
-    [_itemForDragging setRepresentedObject:_content[[_selectionIndexes firstIndex]]];
+    if (!_itemForDragging)
+        _itemForDragging = [self newItemForRepresentedObject:_content[[_selectionIndexes firstIndex]]];
+    else
+        [_itemForDragging setRepresentedObject:_content[[_selectionIndexes firstIndex]]];
 
-    var view = [_itemForDragging view],
-        frame = [view frame];
-    
+    var view = [_itemForDragging view];
+
     [view setFrameSize:_itemSize];
     [view setAlphaValue:0.7];
-    
+
     [self dragView:view
         at:[[_items[[_selectionIndexes firstIndex]] view] frame].origin
-        offset:CGPointMakeZero()
+        offset:CGSizeMakeZero()
         event:_mouseDownEvent
         pasteboard:nil
         source:self
@@ -755,100 +782,10 @@ CPCollectionViewHorizontalOrientation = 1;
 
 @end
 
-/*!
-    Represents an object inside a CPCollectionView.
-*/
-@implementation CPCollectionViewItem : CPObject
-{
-    id      _representedObject;
-    
-    CPView  _view;
-    
-    BOOL    _isSelected;
-}
-
-// Setting the Represented Object
-/*!
-    Sets the object to be represented by this item.
-    @param anObject the object to be represented
-*/
-- (void)setRepresentedObject:(id)anObject
-{
-    if (_representedObject == anObject)
-        return;
-    
-    _representedObject = anObject;
-    
-    // FIXME: This should be set up by bindings
-    [_view setRepresentedObject:anObject];
-}
-
-/*!
-    Returns the object represented by this view item
-*/
-- (id)representedObject
-{
-    return _representedObject;
-}
-
-// Modifying the View
-/*!
-    Sets the view that is used represent this object.
-    @param aView the view used to represent this object
-*/
-- (void)setView:(CPView)aView
-{
-    _view = aView;
-}
-
-/*!
-    Returns the view that represents this object.
-*/
-- (CPView)view
-{
-    return _view;
-}
-
-// Modifying the Selection
-/*!
-    Sets whether this view item should be selected.
-    @param shouldBeSelected \c YES makes the item selected. \c NO deselects it.
-*/
-- (void)setSelected:(BOOL)shouldBeSelected
-{
-    if (_isSelected == shouldBeSelected)
-        return;
-    
-    _isSelected = shouldBeSelected;
-    
-    // FIXME: This should be set up by bindings
-    [_view setSelected:_isSelected];
-}
-
-/*!
-    Returns \c YES if the item is currently selected. \c NO if the item is not selected.
-*/
-- (BOOL)isSelected
-{
-    return _isSelected;
-}
-
-// Parent Collection View
-/*!
-    Returns the collection view of which this item is a part.
-*/
-- (CPCollectionView)collectionView
-{
-    return [_view superview];
-}
-
-@end
-
-
-
 var CPCollectionViewMinItemSizeKey      = @"CPCollectionViewMinItemSizeKey",
     CPCollectionViewMaxItemSizeKey      = @"CPCollectionViewMaxItemSizeKey",
     CPCollectionViewVerticalMarginKey   = @"CPCollectionViewVerticalMarginKey";
+    CPCollectionViewBackgroundColorsKey = @"CPCollectionViewBackgroundColorsKey";
     CPCollectionViewOrientationKey      = @"CPCollectionViewOrientationKey";
 
 
@@ -868,9 +805,12 @@ var CPCollectionViewMinItemSizeKey      = @"CPCollectionViewMinItemSizeKey",
         _itemSize = CGSizeMakeZero();
         _minItemSize = [aCoder decodeSizeForKey:CPCollectionViewMinItemSizeKey] || CGSizeMakeZero();
         _maxItemSize = [aCoder decodeSizeForKey:CPCollectionViewMaxItemSizeKey] || CGSizeMakeZero();
+        _divisionMargin = [aCoder decodeFloatForKey:CPCollectionViewVerticalMarginKey];
 
         _orientation = [aCoder decodeIntForKey:CPCollectionViewOrientationKey];
-        _divisionMargin = [aCoder decodeSizeForKey:CPCollectionViewVerticalMarginKey];
+
+        [self setBackgroundColors:[aCoder decodeObjectForKey:CPCollectionViewBackgroundColorsKey]];
+          
         _tileLength = -1.0;
 
         _selectionIndexes = [CPIndexSet indexSet];
@@ -892,52 +832,11 @@ var CPCollectionViewMinItemSizeKey      = @"CPCollectionViewMinItemSizeKey",
     if (!CGSizeEqualToSize(_maxItemSize, CGSizeMakeZero()))
       [aCoder encodeSize:_maxItemSize forKey:CPCollectionViewMaxItemSizeKey];
 
+    [aCoder encodeFloat:_divisionMargin forKey:CPCollectionViewVerticalMarginKey];
+
     [aCoder encodeInt:_orientation forKey:CPCollectionViewOrientationKey];
-    [aCoder encodeSize:_divisionMargin forKey:CPCollectionViewVerticalMarginKey];
-}
 
-@end
-
-var CPCollectionViewItemViewKey = @"CPCollectionViewItemViewKey";
-
-@implementation CPCollectionViewItem (CPCoding)
-
-/*
-    FIXME Not yet implemented
-*/
-- (id)copy
-{
-    
-}
-
-@end
-
-var CPCollectionViewItemViewKey = @"CPCollectionViewItemViewKey";
-
-@implementation CPCollectionViewItem (CPCoding)
-
-/*!
-    Initializes the view item by unarchiving data from a coder.
-    @param aCoder the coder from which the data will be unarchived
-    @return the initialized collection view item
-*/
-- (id)initWithCoder:(CPCoder)aCoder
-{
-    self = [super init];
-    
-    if (self)
-        _view = [aCoder decodeObjectForKey:CPCollectionViewItemViewKey];
-    
-    return self;
-}
-
-/*!
-    Archives the colletion view item to the provided coder.
-    @param aCoder the coder to which the view item should be archived
-*/
-- (void)encodeWithCoder:(CPCoder)aCoder
-{
-    [aCoder encodeObject:_view forKey:CPCollectionViewItemViewKey];
+    [aCoder encodeObject:_backgroundColors forKey:CPCollectionViewBackgroundColorsKey];
 }
 
 @end
