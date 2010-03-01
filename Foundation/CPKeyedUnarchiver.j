@@ -20,8 +20,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-@import "CPNull.j"
 @import "CPCoder.j"
+@import "CPNull.j"
 
 
 CPInvalidUnarchiveOperationException    = @"CPInvalidUnarchiveOperationException";
@@ -193,7 +193,7 @@ var _CPKeyedUnarchiverArrayClass                                            = Ni
 }
 
 /* @ignore */
-- (void)_decodeDictionaryOfObjectsForKey:(CPString)aKey
+- (CPDictionary)_decodeDictionaryOfObjectsForKey:(CPString)aKey
 {
     var object = [_plistObject objectForKey:aKey];
     

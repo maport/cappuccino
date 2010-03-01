@@ -365,7 +365,7 @@
             count = length;
         
         for(; index < count; ++index)
-            if(self[index] == anObject)
+            if(self[index] === anObject)
                 return index;
     }
     
@@ -521,7 +521,7 @@
 */
 - (id)objectAtIndex:(int)anIndex
 {
-    if (anIndex >= length)
+    if (anIndex >= length || anIndex < 0)
         [CPException raise:CPRangeException reason:@"index (" + anIndex + @") beyond bounds (" + length + @")"];
 
     return self[anIndex];
@@ -534,14 +534,11 @@
 */
 - (CPArray)objectsAtIndexes:(CPIndexSet)indexes
 {
-    var index = [indexes firstIndex],
+    var index = CPNotFound,
         objects = [];
 
-    while(index != CPNotFound)
-    { 
-        [objects addObject:self[index]];
-        index = [indexes indexGreaterThanIndex:index];
-    }
+    while((index = [indexes indexGreaterThanIndex:index]) !== CPNotFound)
+        [objects addObject:[self objectAtIndex:index]];
 
     return objects;
 }
@@ -602,6 +599,23 @@
         objj_msgSend(self[index], aSelector, anObject);
 }
 
+- (void)makeObjectsPerformSelector:(SEL)aSelector withObjects:(CPArray)objects
+{
+    if (!aSelector)
+        [CPException raise:CPInvalidArgumentException reason:"makeObjectsPerformSelector:withObjects: 'aSelector' can't be nil"];
+
+    var index = 0,
+        count = length,
+        argumentsArray = [nil, aSelector].concat(objects || []);
+
+    for(; index < count; ++index)
+    {
+        argumentsArray[0] = self[index];
+        objj_msgSend.apply(this, argumentsArray);
+    }
+}
+
+
 // Comparing arrays
 /*!
     Returns the first object found in the receiver (starting at index 0) which is present in the
@@ -643,7 +657,7 @@
             rhs = anArray[index];
         
         // If they're not equal, and either doesn't have an isa, or they're !isEqual (not isEqual)
-        if (lhs !== rhs && (!lhs.isa || !rhs.isa || ![lhs isEqual:rhs]))
+        if (lhs !== rhs && (lhs && !lhs.isa || rhs && !rhs.isa || ![lhs isEqual:rhs]))
             return NO;
     }
         
@@ -799,15 +813,18 @@
 
     for(; index < count; ++index)
     {
-        var object = self[index];
+        if (index === 0)
+            description += '\n';
 
-        if (object && object.isa)
-            description += [object description];
-        else
-            description += object;
+        var object = [self objectAtIndex:index],
+            objectDescription = object && object.isa ? [object description] : String(object);
+
+        description += "\t" + objectDescription.split('\n').join("\n\t");
 
         if (index !== count - 1)
             description += ", ";
+
+        description += '\n';
     }
 
     return description + ')';
@@ -1095,7 +1112,7 @@
 */
 - (void)removeObjectIdenticalTo:(id)anObject
 {
-    [self removeObjectIdenticalTo:anObject inRange:CPMakeRange(0, length)];
+    [self removeObjectIdenticalTo:anObject inRange:CPMakeRange(0, [self count])];
 }
 
 /*!
@@ -1107,12 +1124,13 @@
 */
 - (void)removeObjectIdenticalTo:(id)anObject inRange:(CPRange)aRange
 {
-    var index;
+    var index,
+        count = [self count];
     
-    while ((index = [self indexOfObjectIdenticalTo:anObject inRange:aRange]) != CPNotFound)
+    while ((index = [self indexOfObjectIdenticalTo:anObject inRange:aRange]) !== CPNotFound)
     {
         [self removeObjectAtIndex:index];
-        aRange = CPIntersectionRange(CPMakeRange(index, length - index), aRange);
+        aRange = CPIntersectionRange(CPMakeRange(index, (--count) - index), aRange);
     }
 }
 

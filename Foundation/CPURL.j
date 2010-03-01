@@ -132,7 +132,7 @@ CPURLCustomIconKey                  = @"CPURLCustomIconKey";
     return URI_RE.test(str) ? (parse(str).domain || nil) : nil;
 }
 
-- (CPString)port
+- (Number)port
 {
     var str = [self absoluteString];
     if (URI_RE.test(str)) {
@@ -198,6 +198,12 @@ CPURLCustomIconKey                  = @"CPURLCustomIconKey";
 - (id)setResourceValue:(id)anObject forKey:(CPString)aKey
 {
     [_resourceValues setObject:anObject forKey:aKey];
+}
+
+- (CPString)staticResourceData
+{
+    // FIXME: This probably shouldn't go through CFBundle for no reason.
+    return CFBundle.dataContentsAtPath([self path]);
 }
 
 @end

@@ -1,3 +1,24 @@
+/*
+ * CPPlatformWindow.j
+ * AppKit
+ *
+ * Created by Francisco Tolmasky.
+ * Copyright 2010, 280 North, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
 
 @import <Foundation/CPObject.j>
 
@@ -13,6 +34,7 @@ var PrimaryPlatformWindow   = NULL;
 
     CPInteger       _level;
     BOOL            _hasShadow;
+    unsigned        _shadowStyle;
 
 #if PLATFORM(DOM)
     DOMWindow       _DOMWindow;
@@ -30,6 +52,10 @@ var PrimaryPlatformWindow   = NULL;
 
     Object          _charCodes;
     unsigned        _keyCode;
+    unsigned        _lastKey;
+    BOOL            _capsLockActive;
+    BOOL            _ignoreNativeCopyOrCutEvent;
+    BOOL            _ignoreNativePastePreparation;
 
     BOOL            _DOMEventMode;
 
@@ -39,6 +65,11 @@ var PrimaryPlatformWindow   = NULL;
 
     CPString        _overriddenEventType;
 #endif
+}
+
++ (CPSet)visiblePlatformWindows
+{
+    return [CPSet set];
 }
 
 + (CPPlatformWindow)primaryPlatformWindow
@@ -95,7 +126,7 @@ var PrimaryPlatformWindow   = NULL;
 
     frame.origin = CGPointMakeZero();
 
-    if ([CPMenu menuBarVisible])
+    if ([CPMenu menuBarVisible] && [CPPlatformWindow primaryPlatformWindow] === self)
     {
         var menuBarHeight = [[CPApp mainMenu] menuBarHeight];
 
@@ -106,7 +137,7 @@ var PrimaryPlatformWindow   = NULL;
     return frame;
 }
 
-- (void)usableContentFrame
+- (CGRect)usableContentFrame
 {
     return [self visibleFrame];
 }
@@ -149,6 +180,22 @@ var PrimaryPlatformWindow   = NULL;
 #endif
 }
 
+- (void)deminiaturize:(id)sender
+{
+#if PLATFORM(DOM)
+    if (_DOMWindow && typeof _DOMWindow["cpDeminiaturize"] === "function")
+        _DOMWindow.cpDeminiaturize();
+#endif
+}
+
+- (void)miniaturize:(id)sender
+{
+#if PLATFORM(DOM)
+    if (_DOMWindow && typeof _DOMWindow["cpMiniaturize"] === "function")
+        _DOMWindow.cpMiniaturize();
+#endif
+}
+
 - (void)setLevel:(CPInteger)aLevel
 {
     _level = aLevel;
@@ -166,6 +213,16 @@ var PrimaryPlatformWindow   = NULL;
 #if PLATFORM(DOM)
     if (_DOMWindow && _DOMWindow.cpSetHasShadow)
         _DOMWindow.cpSetHasShadow(shouldHaveShadow);
+#endif
+}
+
+- (void)setShadowStyle:(int)aStyle
+{
+    _shadowStyle = aStyle;
+
+#if PLATFORM(DOM)
+    if (_DOMWindow && _DOMWindow.cpSetShadowStyle)
+        _shadowStyle.cpSetShadowStyle(aStyle);
 #endif
 }
 

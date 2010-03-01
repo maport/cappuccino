@@ -238,6 +238,11 @@ var CPViewFlags                     = { },
     return [CPSet setWithObjects:@"frameOrigin", @"frameSize"];
 }
 
++ (CPSet)keyPathsForValuesAffectingBounds
+{
+    return [CPSet setWithObjects:@"boundsOrigin", @"boundsSize"];
+}
+
 - (id)init
 {
     return [self initWithFrame:CGRectMakeZero()];
@@ -308,7 +313,7 @@ var CPViewFlags                     = { },
 */
 - (CPArray)subviews
 {
-    return _subviews;
+    return [_subviews copy];
 }
 
 /*!
@@ -441,7 +446,7 @@ var CPViewFlags                     = { },
 
     [_superview willRemoveSubview:self];
     
-    [[_superview subviews] removeObject:self];
+    [_superview._subviews removeObject:self];
 
 #if PLATFORM(DOM)
         CPDOMDisplayServerRemoveChild(_superview._DOMElement, _DOMElement);
@@ -466,6 +471,73 @@ var CPViewFlags                     = { },
     [aSubview removeFromSuperview];
     
     [self _insertSubview:aView atIndex:index];
+}
+
+- (void)setSubviews:(CPArray)newSubviews
+{
+    if (!newSubviews)
+        [CPException raise:CPInvalidArgumentException reason:"newSubviews cannot be nil in -[CPView setSubviews:]"];
+
+    // Trivial Case 0: Same array somehow
+    if ([_subviews isEqual:newSubviews])
+        return;
+
+    // Trivial Case 1: No current subviews, simply add all new subviews.
+    if ([_subviews count] === 0)
+    {
+        var index = 0,
+            count = [newSubviews count];
+
+        for (; index < count; ++index)
+            [self addSubview:newSubviews[index]];
+
+        return;
+    }
+
+    // Trivial Case 2: No new subviews, simply remove all current subviews.
+    if ([newSubviews count] === 0)
+    {
+        var count = [_subviews count];
+
+        while (count--)
+            [_subviews[count] removeFromSuperview];
+
+        return;
+    }
+
+    // Find out the views that were removed.
+    var removedSubviews = [CPMutableSet setWithArray:_subviews];
+
+    [removedSubviews removeObjectsInArray:newSubviews];
+    [removedSubviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
+
+    // Find out which views need to be added.
+    var addedSubviews = [CPMutableSet setWithArray:newSubviews];
+
+    [addedSubviews removeObjectsInArray:_subviews];
+
+    var addedSubview = nil,
+        addedSubviewEnumerator = [addedSubviews objectEnumerator];
+
+    while (addedSubview = [addedSubviewEnumerator nextObject])
+        [self addSubview:addedSubview];
+
+    // If the order is fine, no need to reorder.
+    if ([_subviews isEqual:newSubviews])
+        return;
+
+    _subviews = [newSubviews copy];
+
+    var index = 0,
+        count = [_subviews count];
+
+    for (; index < count; ++index)
+    {
+        var subview = _subviews[index];
+
+        CPDOMDisplayServerRemoveChild(_DOMElement, subview._DOMElement);
+        CPDOMDisplayServerAppendChild(_DOMElement, subview._DOMElement);
+    }
 }
 
 /* @ignore */
@@ -596,7 +668,7 @@ var CPViewFlags                     = { },
 
 - (void)viewWithTag:(CPInteger)aTag
 {
-    if ([self tag] === aTag)
+    if ([self tag] == aTag)
         return self;
 
     var index = 0,
@@ -706,7 +778,9 @@ var CPViewFlags                     = { },
         [CachedNotificationCenter postNotificationName:CPViewFrameDidChangeNotification object:self];
 
 #if PLATFORM(DOM)
-    CPDOMDisplayServerSetStyleLeftTop(_DOMElement, _superview ? _superview._boundsTransform : NULL, origin.x, origin.y);
+    var transform = _superview ? _superview._boundsTransform : NULL;
+
+    CPDOMDisplayServerSetStyleLeftTop(_DOMElement, transform, origin.x, origin.y);
 #endif
 }
 
@@ -812,6 +886,16 @@ var CPViewFlags                     = { },
 - (CGRect)bounds
 {
     return _CGRectMakeCopy(_bounds);
+}
+
+- (CGPoint)boundsOrigin
+{
+    return _CGPointMakeCopy(_bounds.origin);
+}
+
+- (CGSize)boundsSize
+{
+    return _CGSizeMakeCopy(_bounds.size);
 }
 
 /*!
@@ -1198,6 +1282,14 @@ var CPViewFlags                     = { },
             return view;
 
     return self;
+}
+
+/*!
+    Returns \c YES if this view requires a panel to become key. Normally only text fields, so this returns \c NO.
+*/
+- (BOOL)needsPanelToBecomeKey
+{
+    return NO;
 }
 
 /*!
@@ -1859,6 +1951,18 @@ setBoundsOrigin:
 
 @implementation CPView (KeyView)
 
+- (BOOL)performKeyEquivalent:(CPEvent)anEvent
+{
+    var count = [_subviews count];
+
+    // Is reverse iteration correct here? It matches the other (correct) code like hit testing.
+    while (count--)
+        if ([_subviews[count] performKeyEquivalent:anEvent])
+            return YES;
+
+    return NO;
+}
+
 - (BOOL)canBecomeKeyView
 {
     return [self acceptsFirstResponder] && ![self isHiddenOrHasHiddenAncestor];
@@ -2031,7 +2135,8 @@ setBoundsOrigin:
 
     var theClass = [self class],
         CPViewClass = [CPView class],
-        attributes = [];
+        attributes = [],
+        nullValue = [CPNull null];
 
     for (; theClass && theClass !== CPViewClass; theClass = [theClass superclass])
     {
@@ -2055,9 +2160,10 @@ setBoundsOrigin:
 
         while (attributeCount--)
         {
-            var attributeName = attributeKeys[attributeCount];
+            var attributeName = attributeKeys[attributeCount],
+                attributeValue = [attributeDictionary objectForKey:attributeName];
 
-            attributes.push([attributeDictionary objectForKey:attributeName]);
+            attributes.push(attributeValue === nullValue ? nil : attributeValue);
             attributes.push(attributeName);
         }
     }
@@ -2185,7 +2291,7 @@ setBoundsOrigin:
     return [_themeAttributes[aName] value];
 }
 
-- (void)currentValueForThemeAttribute:(CPString)aName
+- (id)currentValueForThemeAttribute:(CPString)aName
 {
     if (!_themeAttributes || !_themeAttributes[aName])
         [CPException raise:CPInvalidArgumentException reason:[self className] + " does not contain theme attribute '" + aName + "'"];
