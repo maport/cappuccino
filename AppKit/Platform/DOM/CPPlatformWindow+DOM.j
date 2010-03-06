@@ -305,7 +305,6 @@ var supportsNativeDragAndDrop = [CPPlatform supportsDragAndDrop];
         touchEventImplementation = class_getMethodImplementation(theClass, touchEventSelector),
         touchEventCallback = function (anEvent) { touchEventImplementation(self, nil, anEvent); };
 
-
     if (theDocument.addEventListener)
     {
         if ([CPPlatform supportsDragAndDrop])
@@ -426,7 +425,14 @@ var supportsNativeDragAndDrop = [CPPlatform supportsDragAndDrop];
 
 + (CPSet)visiblePlatformWindows
 {
-    return PlatformWindows;
+    if ([[CPPlatformWindow primaryPlatformWindow] isVisible])
+    {
+        var set = [CPSet setWithSet:PlatformWindows];
+        [set addObject:[CPPlatformWindow primaryPlatformWindow]];
+        return set;
+    }
+    else
+        return PlatformWindows;
 }
 
 - (void)orderFront:(id)aSender
@@ -1102,7 +1108,7 @@ var supportsNativeDragAndDrop = [CPPlatform supportsDragAndDrop];
  (CPArray)orderedWindowsAtLevel:(int)aLevel
 {
     var layer = [self layerAtLevel:aLevel create:NO];
-    
+
     if (!layer)
         return [];
     
@@ -1112,7 +1118,7 @@ var supportsNativeDragAndDrop = [CPPlatform supportsDragAndDrop];
 - (CPDOMWindowLayer)layerAtLevel:(int)aLevel create:(BOOL)aFlag
 {
     var layer = [_windowLayers objectForKey:aLevel];
-    
+
     // If the layer doesn't currently exist, and the create flag is true,
     // create the layer.
     if (!layer && aFlag)
@@ -1120,7 +1126,7 @@ var supportsNativeDragAndDrop = [CPPlatform supportsDragAndDrop];
         layer = [[CPDOMWindowLayer alloc] initWithLevel:aLevel];
         
         [_windowLayers setObject:layer forKey:aLevel];
-        
+
         // Find the nearest layer.  This is similar to a binary search, 
         // only we know we won't find the value.
         var low = 0,
@@ -1137,7 +1143,11 @@ var supportsNativeDragAndDrop = [CPPlatform supportsDragAndDrop];
                 low = middle + 1;
         }
 
-        [_windowLevels insertObject:aLevel atIndex:_windowLevels[middle] > aLevel ? middle : middle + 1];
+        var insertionIndex = 0;
+        if (middle !== undefined) 
+            insertionIndex = _windowLevels[middle] > aLevel ? middle : middle + 1
+
+        [_windowLevels insertObject:aLevel atIndex:insertionIndex];
         layer._DOMElement.style.zIndex = aLevel;
         _DOMBodyElement.appendChild(layer._DOMElement);
     }
@@ -1151,15 +1161,19 @@ var supportsNativeDragAndDrop = [CPPlatform supportsDragAndDrop];
 
     // Grab the appropriate level for the layer, and create it if 
     // necessary (if we are not simply removing the window).
-    var layer = [self layerAtLevel:[aWindow level] create:aPlace != CPWindowOut];
-        
+    var layer = [self layerAtLevel:[aWindow level] create:aPlace !== CPWindowOut];
+
     // Ignore otherWindow, simply remove this window from it's level.  
     // If layer is nil, this will be a no-op.
-    if (aPlace == CPWindowOut)
+    if (aPlace === CPWindowOut)
         return [layer removeWindow:aWindow];
 
+    var insertionIndex = CPNotFound;
+    if (otherWindow)
+        insertionIndex = aPlace === CPWindowAbove ? otherWindow._index + 1 : otherWindow._index;
+
     // Place the window at the appropriate index.
-    [layer insertWindow:aWindow atIndex:(otherWindow ? (aPlace == CPWindowAbove ? otherWindow._index + 1 : otherWindow._index) : CPNotFound)];
+    [layer insertWindow:aWindow atIndex:insertionIndex];
 }
 
 - (void)_removeLayers
@@ -1374,19 +1388,25 @@ var CPDOMEventStop = function(aDOMEvent, aPlatformWindow)
 
 function CPWindowObjectList()
 {
-    var platformWindow = [CPPlatformWindow primaryPlatformWindow],
-        levels = platformWindow._windowLevels,
-        layers = platformWindow._windowLayers,
-        levelCount = levels.length,
+    var platformWindows = [CPPlatformWindow visiblePlatformWindows],
+        platformWindowEnumerator = [platformWindows objectEnumerator],
+        platformWindow = nil,
         windowObjects = [];
 
-    while (levelCount--)
+    while (platformWindow = [platformWindowEnumerator nextObject])
     {
-        var windows = [layers objectForKey:levels[levelCount]]._windows,
-            windowCount = windows.length;
+        var levels = platformWindow._windowLevels,
+            layers = platformWindow._windowLayers,
+            levelCount = levels.length;
 
-        while (windowCount--)
-            windowObjects.push(windows[windowCount]);
+        while (levelCount--)
+        {
+            var windows = [layers objectForKey:levels[levelCount]]._windows,
+                windowCount = windows.length;
+
+            while (windowCount--)
+                windowObjects.push(windows[windowCount]);
+        }
     }
 
     return windowObjects;
@@ -1394,20 +1414,11 @@ function CPWindowObjectList()
 
 function CPWindowList()
 {
-    var platformWindow = [CPPlatformWindow primaryPlatformWindow],
-        levels = platformWindow._windowLevels,
-        layers = platformWindow._windowLayers,
-        levelCount = levels.length,
-        windowNumbers = [];
+    var windowObjectList = CPWindowObjectList(),
+        windowList = [];
 
-    while (levelCount--)
-    {
-        var windows = [layers objectForKey:levels[levelCount]]._windows,
-            windowCount = windows.length;
+    for (var i = 0, count = [windowObjectList count]; i < count; i++)
+        windowList.push([windowObjectList[i] windowNumber]);
 
-        while (windowCount--)
-            windowNumbers.push([windows[windowCount] windowNumber]);
-    }
-
-    return windowNumbers;
+    return windowList;
 }

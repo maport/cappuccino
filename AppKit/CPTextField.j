@@ -483,6 +483,7 @@ CPTextFieldStatePlaceholder = CPThemeState("placeholder");
     window.setTimeout(function() 
     { 
         element.focus();
+        [self textDidFocus:[CPNotification notificationWithName:CPTextFieldDidFocusNotification object:self userInfo:nil]];
         CPTextFieldInputOwner = self;
     }, 0.0);
  
@@ -500,8 +501,6 @@ CPTextFieldStatePlaceholder = CPThemeState("placeholder");
         [[self window] platformWindow]._DOMBodyElement.ondrag = function () {};
         [[self window] platformWindow]._DOMBodyElement.onselectstart = function () {};
     }
-    
-    [self textDidFocus:[CPNotification notificationWithName:CPTextFieldDidFocusNotification object:self userInfo:nil]];
 #endif
 
     return YES;
@@ -684,9 +683,10 @@ CPTextFieldStatePlaceholder = CPThemeState("placeholder");
 - (void)setObjectValue:(id)aValue
 {
     [super setObjectValue:aValue];
-
+	
 #if PLATFORM(DOM)
-    if (CPTextFieldInputOwner === self)
+
+    if (CPTextFieldInputOwner === self || [[self window] firstResponder] === self)
         [self _inputElement].value = aValue;
 #endif
 

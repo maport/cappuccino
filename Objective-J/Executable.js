@@ -20,18 +20,20 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+
 var ExecutableUnloadedFileDependencies  = 0,
     ExecutableLoadingFileDependencies   = 1,
-    ExecutableLoadedFileDependencies    = 2;
+    ExecutableLoadedFileDependencies    = 2,
+    AnonymousExecutableCount            = 0;
 
-function Executable(/*String*/ aCode, /*Array*/ fileDependencies, /*String*/ aScope, /*Function*/ aFunction)
+function Executable(/*String*/ aCode, /*Array*/ fileDependencies, /*CFURL|String*/ aURL, /*Function*/ aFunction)
 {
     if (arguments.length === 0)
         return this;
 
     this._code = aCode;
     this._function = aFunction || NULL;
-    this._scope = aScope || "(Anonymous)";
+    this._URL = makeAbsoluteURL(aURL || new CFURL("(Anonymous" + (AnonymousExecutableCount++) + ")"));
 
     this._fileDependencies = fileDependencies;
     this._fileDependencyLoadStatus = ExecutableUnloadedFileDependencies;
@@ -48,7 +50,12 @@ exports.Executable = Executable;
 
 Executable.prototype.path = function()
 {
-    return FILE.join(FILE.cwd(), "(Anonymous)");
+    return this.URL().path();
+}
+
+Executable.prototype.URL = function()
+{
+    return this._URL;
 }
 
 Executable.prototype.functionParameters = function()
@@ -115,11 +122,11 @@ Executable.prototype.toMarkedString = function()
 Executable.prototype.execute = function()
 {
 #if EXECUTION_LOGGING
-    CPLog("EXECUTION: " + this.path());
+    CPLog("EXECUTION: " + this.URL());
 #endif
     var oldContextBundle = CONTEXT_BUNDLE;
 
-    CONTEXT_BUNDLE = CFBundle.bundleContainingPath(this.path());
+    CONTEXT_BUNDLE = CFBundle.bundleContainingURL(this.URL());
 
     var result = this._function.apply(global, this.functionArguments());
 
@@ -137,13 +144,14 @@ Executable.prototype.setCode = function(code)
 {
     this._code = code;
 
-    var parameters = this.functionParameters().join(",");
+    var parameters = this.functionParameters().join(","),
+        absoluteString = this.URL().absoluteString();
 
 #if COMMONJS
     if (typeof system !== "undefined" && system.engine === "rhino")
     {
         code = "function(" + parameters + "){" + code + "/**/\n}";
-        this._function = Packages.org.mozilla.javascript.Context.getCurrentContext().compileFunction(window, code, this._scope, 0, NULL);
+        this._function = Packages.org.mozilla.javascript.Context.getCurrentContext().compileFunction(window, code, absoluteString, 0, NULL);
     }
     else
     {
@@ -152,14 +160,14 @@ Executable.prototype.setCode = function(code)
     // * WebKit:  http://pmuellr.blogspot.com/2009/06/debugger-friendly.html
     // * Firebug: http://blog.getfirebug.com/2009/08/11/give-your-eval-a-name-with-sourceurl/
     //if (YES) {
-        code += "/**/\n//@ sourceURL=" + this._scope;
+        code += "/**/\n//@ sourceURL=" + "hello" + absoluteString;
         this._function = new Function(parameters, code);
     //} else {
     //    // Firebug only does it for "eval()", not "new Function()". Ugh. Slower.
     //    var functionText = "(function(){"+GET_CODE(aFragment)+"/**/\n})\n//@ sourceURL="+GET_FILE(aFragment).path;
     //    compiled = eval(functionText);
     //}
-    this._function.displayName = this._scope;
+    this._function.displayName = absoluteString;
 #if COMMONJS
     }
 #endif
@@ -191,7 +199,7 @@ Executable.prototype.loadFileDependencies = function()
 
     this._fileDependencyLoadStatus = ExecutableLoadingFileDependencies;
 
-    var searchedPaths = [{ }, { }],
+    var searchedURLStrings = [{ }, { }],
         fileExecutableSearches = new CFMutableDictionary(),
         incompleteFileExecutableSearches = new CFMutableDictionary(),
         loadingExecutables = { };
@@ -209,11 +217,11 @@ Executable.prototype.loadFileDependencies = function()
             if (executable.hasLoadedFileDependencies())
                 continue;
 
-            var executablePath = executable.path();
+            var executableURLString = executable.URL().absoluteString();
 
-            loadingExecutables[executablePath] = executable;
+            loadingExecutables[executableURLString] = executable;
 
-            var cwd = FILE.dirname(executablePath),
+            var referenceURL = new CFURL(".", executable.URL()),
                 fileDependencies = executable.fileDependencies(),
                 fileDependencyIndex = 0,
                 fileDependencyCount = fileDependencies.length;
@@ -222,14 +230,19 @@ Executable.prototype.loadFileDependencies = function()
             {
                 var fileDependency = fileDependencies[fileDependencyIndex],
                     isLocal = fileDependency.isLocal(),
-                    path = importablePath(fileDependency.path(), isLocal, cwd);
+                    URL = fileDependency.URL();
 
-                if (searchedPaths[isLocal ? 1 : 0][path])
+                if (isLocal)
+                    URL = new CFURL(URL, referenceURL);
+
+                var URLString = URL.absoluteString();
+
+                if (searchedURLStrings[isLocal ? 1 : 0][URLString])
                     continue;
 
-                searchedPaths[isLocal ? 1 : 0][path] = YES;
+                searchedURLStrings[isLocal ? 1 : 0][URLString] = YES;
 
-                var fileExecutableSearch = new FileExecutableSearch(path, isLocal),
+                var fileExecutableSearch = new FileExecutableSearch(URL, isLocal),
                     fileExecutableSearchUID = fileExecutableSearch.UID();
 
                 if (fileExecutableSearches.containsKey(fileExecutableSearchUID))
@@ -272,14 +285,14 @@ Executable.prototype.loadFileDependencies = function()
         CPLog("DEPENDENCY: Ended");
 #endif
 
-        for (var path in loadingExecutables)
-            if (hasOwnProperty.call(loadingExecutables, path))
-                loadingExecutables[path]._fileDependencyLoadStatus = ExecutableLoadedFileDependencies;
+        for (var URLString in loadingExecutables)
+            if (hasOwnProperty.call(loadingExecutables, URLString))
+                loadingExecutables[URLString]._fileDependencyLoadStatus = ExecutableLoadedFileDependencies;
 
-        for (var path in loadingExecutables)
-            if (hasOwnProperty.call(loadingExecutables, path))
+        for (var URLString in loadingExecutables)
+            if (hasOwnProperty.call(loadingExecutables, URLString))
             {
-                var executable = loadingExecutables[path];
+                var executable = loadingExecutables[URLString];
 
                 executable._eventDispatcher.dispatchEvent(
                 {
@@ -302,81 +315,73 @@ Executable.prototype.removeEventListener = function(/*String*/ anEventName, /*Fu
     this._eventDispatcher.removeEventListener(anEventName, aListener);
 }
 
-function importablePath(/*String*/ aPath, /*BOOL*/ isLocal, /*String*/ aCWD)
-{
-    aPath = FILE.normal(aPath);
-
-    if (FILE.isAbsolute(aPath))
-        return aPath;
-
-    if (isLocal)
-        aPath = FILE.normal(FILE.join(aCWD, aPath));
-
-    return aPath;
-}
-
 Executable.prototype.fileImporter = function()
 {
-    return Executable.fileImporterForPath(FILE.dirname(this.path()));
+    return Executable.fileImporterForURL(new CFURL(".", this.URL()));
 }
 
 Executable.prototype.fileExecuter = function()
 {
-    return Executable.fileExecuterForPath(FILE.dirname(this.path()));
+    return Executable.fileExecuterForURL(new CFURL(".", this.URL()));
 }
 
-var cachedFileExecutersForPaths = { };
+var cachedFileExecutersForURLStrings = { };
 
-Executable.fileExecuterForPath = function(/*String*/ referencePath)
+Executable.fileExecuterForURL = function(/*CFURL|String*/ aURL)
 {
-    referencePath = FILE.normal(referencePath);
+    var referenceURL = makeAbsoluteURL(aURL),
+        referenceURLString = referenceURL.absoluteString(),
+        cachedFileExecuter = cachedFileExecutersForURLStrings[referenceURLString];
 
-    var fileExecuter = cachedFileExecutersForPaths[referencePath];
-
-    if (!fileExecuter)
+    if (!cachedFileExecuter)
     {
-        fileExecuter = function(/*String*/ aPath, /*BOOL*/ isLocal, /*BOOL*/ shouldForce)
+        cachedFileExecuter = function(/*CFURL*/ aURL, /*BOOL*/ isQuoted, /*BOOL*/ shouldForce)
         {
-            aPath = importablePath(aPath, isLocal, referencePath);
+            aURL = new CFURL(aURL, isQuoted ? referenceURL : NULL);
 
-            var fileExecutableSearch = new FileExecutableSearch(aPath, isLocal),
+            var fileExecutableSearch = new FileExecutableSearch(aURL, isQuoted),
                 fileExecutable = fileExecutableSearch.result();
 
-            if (0 && !fileExecutable.hasLoadedFileDependencies())
-                throw "No executable loaded for file at path " + aPath;
+            if (!fileExecutable.hasLoadedFileDependencies())
+                throw "No executable loaded for file at URL " + aURL;
 
             fileExecutable.execute(shouldForce);
         }
 
-        cachedFileExecutersForPaths[referencePath] = fileExecuter;
+        cachedFileExecutersForURLStrings[referenceURLString] = cachedFileExecuter;
     }
 
-    return fileExecuter;
+    return cachedFileExecuter;
 }
 
-var cachedImportersForPaths = { };
+var cachedImportersForURLStrings = { };
 
-Executable.fileImporterForPath = function(/*String*/ referencePath)
+Executable.fileImporterForURL = function(/*CFURL|String*/ aURL)
 {
-    referencePath = FILE.normal(referencePath);
-
-    var cachedImporter = cachedImportersForPaths[referencePath];
+    var referenceURL = makeAbsoluteURL(aURL),
+        referenceURLString = referenceURL.absoluteString(),
+        cachedImporter = cachedImportersForURLStrings[referenceURLString];
 
     if (!cachedImporter)
     {
-        cachedImporter = function(/*String*/ aPath, /*BOOL*/ isLocal, /*Function*/ aCallback)
+        cachedImporter = function(/*CFURL*/ aURL, /*BOOL*/ isQuoted, /*Function*/ aCallback)
         {
-            aPath = importablePath(aPath, isLocal, referencePath);
+            // We make heavy use of URLs throughout this process, so cache them!
+            enableCFURLCaching();
 
-            var fileExecutableSearch = new FileExecutableSearch(aPath, isLocal);
+            aURL = new CFURL(aURL, isQuoted ? referenceURL : NULL);
+
+            var fileExecutableSearch = new FileExecutableSearch(aURL, isQuoted);
 
             function searchComplete(/*FileExecutableSearch*/ aFileExecutableSearch)
             {
                 var fileExecutable = aFileExecutableSearch.result(),
-                    fileExecuter = Executable.fileExecuterForPath(referencePath),
                     executeAndCallback = function ()
                     {
-                        fileExecuter(aPath, isLocal);
+                        fileExecutable.execute();
+
+                        // No more need to cache these.
+                        disableCFURLCaching();
 
                         if (aCallback)
                             aCallback();
@@ -400,9 +405,8 @@ Executable.fileImporterForPath = function(/*String*/ referencePath)
                 });
         }
 
-        cachedImportersForPaths[referencePath] = cachedImporter;
+        cachedImportersForURLStrings[referenceURLString] = cachedImporter;
     }
 
     return cachedImporter;
 }
-
