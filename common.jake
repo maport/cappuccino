@@ -2,6 +2,14 @@ var SYSTEM = require("system");
 var FILE = require("file");
 var OS = require("os");
 var UTIL = require("util");
+var stream = require("term").stream;
+
+var requiresSudo = false;
+
+SYSTEM.args.slice(1).forEach(function(arg){
+    if (arg === "sudo-install")
+        requiresSudo = true;
+});
 
 function ensurePackageUpToDate(packageName, requiredVersion, options)
 {
@@ -37,7 +45,18 @@ function ensurePackageUpToDate(packageName, requiredVersion, options)
             print("Jake aborted.");
             OS.exit(1);
         }
-        OS.system(["tusk", "install", "--force", packageName]);
+
+        if (requiresSudo)
+        {
+            if (OS.system(["sudo", "tusk", "install", "--force", packageName]))
+            {
+                // Attempt a hackish work-around for sudo compiled with the --with-secure-path option
+                if (OS.system("sudo bash -c 'source " + getShellConfigFile() + "; tusk install --force "+packageName))
+                    OS.exit(1); //rake abort if ($? != 0)
+            }
+        }
+        else
+            OS.system(["tusk", "install", "--force", packageName]);
     }
     
     if (options.message)
@@ -268,6 +287,31 @@ global.symlink_executable = function(source)
     relative = FILE.relative($ENVIRONMENT_NARWHAL_BIN_DIR, source);
     destination = FILE.join($ENVIRONMENT_NARWHAL_BIN_DIR, FILE.basename(source));
     FILE.symlink(relative, destination);
+}
+
+global.getCappuccinoVersion = function() {
+    var versionFile = FILE.path(module.path).dirname().join("version.json");
+    return JSON.parse(versionFile.read({ charset : "UTF-8" })).version;
+}
+
+global.setPackageMetadata = function(packagePath) {
+    var pkg = JSON.parse(FILE.read(packagePath, { charset : "UTF-8" }));
+
+    var p = OS.popen(["git", "rev-parse", "--verify", "HEAD"]);
+    if (p.wait() === 0) {
+        var sha = p.stdout.read().split("\n")[0];
+        if (sha.length === 40)
+            pkg["cappuccino-revision"] = sha;
+    }
+
+    pkg["cappuccino-timestamp"] = new Date().getTime();
+    pkg["version"] = getCappuccinoVersion();
+
+    stream.print("    Version:   \0purple(" + pkg["version"] + "\0)");
+    stream.print("    Revision:  \0purple(" + pkg["cappuccino-revision"] + "\0)");
+    stream.print("    Timestamp: \0purple(" + pkg["cappuccino-timestamp"] + "\0)");
+
+    FILE.write(packagePath, JSON.stringify(pkg, null, 4), { charset : "UTF-8" });
 }
 
 global.subtasks = function(subprojects, taskNames)
