@@ -23,6 +23,7 @@
 
 @import <AppKit/CPTableColumn.j>
 @import <AppKit/CPTableHeaderView.j>
+@import <AppKit/CPButton.j>
 
 @implementation CPTableColumn (NSCoding)
 
@@ -34,26 +35,77 @@
     {
         _identifier = [aCoder decodeObjectForKey:@"NSIdentifier"];
 
-        //var dataViewCell = [aCoder decodeObjectForKey:@"NSDataCell"];
+        var dataViewCell = [aCoder decodeObjectForKey:@"NSDataCell"];
 
-        _dataView = [[CPTextField alloc] initWithFrame:CPRectMakeZero()];
-        [_dataView setValue:[CPColor whiteColor] forThemeAttribute:"text-color" inState:CPThemeStateHighlighted];
+        if ([dataViewCell isKindOfClass:[NSImageCell class]])
+        {
+            _dataView = [[CPImageView alloc] initWithFrame:CGRectMakeZero()];
+            [_dataView setImageScaling:[dataViewCell imageScaling]];
+            [_dataView setImageAlignment:[dataViewCell imageAlignment]];
+        }
+        else if ([dataViewCell isKindOfClass:[NSTextFieldCell class]])
+        {
+            _dataView = [[CPTextField alloc] initWithFrame:CPRectMakeZero()];
+
+            var font = [dataViewCell font],
+                selectedFont = nil;
+
+            if (font)
+                font = [NSFont cibFontForNibFont:font];
+
+            if (!font)
+                font = [CPFont systemFontOfSize:[CPFont systemFontSize]];
+
+            var selectedFont = [CPFont boldFontWithName:[font familyName] size:[font size]];
+
+            [_dataView setFont:font];
+            [_dataView setValue:selectedFont forThemeAttribute:@"font" inState:CPThemeStateSelectedDataView];
+
+            [_dataView setLineBreakMode:CPLineBreakByTruncatingTail];
+
+            [_dataView setValue:CPCenterVerticalTextAlignment forThemeAttribute:@"vertical-alignment"];
+            [_dataView setValue:CGInsetMake(0.0, 5.0, 0.0, 5.0) forThemeAttribute:@"content-inset"];
+
+            var textColor = [dataViewCell textColor],
+                defaultColor = [_dataView currentValueForThemeAttribute:@"text-color"];
+
+            // Don't change the text color if it is not the default, that messes up the theme lookups later
+            if (![textColor isEqual:defaultColor])
+                [_dataView setTextColor:[dataViewCell textColor]];
+        }
+        else if ([dataViewCell isKindOfClass:[NSButtonCell class]])
+        {
+            _dataView = [[CPButton alloc] initWithFrame:CGRectMakeZero()];
+            _dataView = [_dataView NS_initWithCell:dataViewCell];
+        }
+        else if ([dataViewCell isKindOfClass:[NSLevelIndicatorCell class]])
+        {
+            _dataView = [[CPLevelIndicator alloc] initWithFrame:CGRectMakeZero()];
+            _dataView = [_dataView NS_initWithCell:dataViewCell];
+        }
+
+        [_dataView setValue:[dataViewCell alignment] forThemeAttribute:@"alignment"];
 
         var headerCell = [aCoder decodeObjectForKey:@"NSHeaderCell"],
             headerView = [[_CPTableColumnHeaderView alloc] initWithFrame:CPRectMakeZero()];
 
-        [_headerView setStringValue:[headerCell objectValue]];
-        [_headerView setFont:[headerCell font]];
+        [headerView setStringValue:[headerCell objectValue]];
+        [headerView setValue:[dataViewCell alignment] forThemeAttribute:@"text-alignment"];
 
-        [self setHeaderView:_headerView];
+        [self setHeaderView:headerView];
 
         _width = [aCoder decodeFloatForKey:@"NSWidth"];
         _minWidth = [aCoder decodeFloatForKey:@"NSMinWidth"];
         _maxWidth = [aCoder decodeFloatForKey:@"NSMaxWidth"];
 
-        _resizingMask  = [aCoder decodeBoolForKey:@"NSIsResizable"];
+        _resizingMask = [aCoder decodeIntForKey:@"NSResizingMask"];
+        _isHidden = [aCoder decodeBoolForKey:@"NSHidden"];
+
+        _isEditable = [aCoder decodeBoolForKey:@"NSIsEditable"];
+
+        _sortDescriptorPrototype = [aCoder decodeObjectForKey:@"NSSortDescriptorPrototype"];
     }
-    
+
     return self;
 }
 

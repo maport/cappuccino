@@ -21,10 +21,8 @@
  */
 
 @import "CPObject.j"
-@import "CPException.j"
 
-
-/*! 
+/*!
     @class CPInvocation
     @ingroup foundation
     @brief An object representation of a message.
@@ -57,13 +55,13 @@
 - (id)initWithMethodSignature:(CPMethodSignature)aMethodSignature
 {
     self = [super init];
-    
+
     if (self)
     {
         _arguments = [];
         _methodSignature = aMethodSignature;
     }
-    
+
     return self;
 }
 
@@ -174,13 +172,13 @@ var CPInvocationArguments   = @"CPInvocationArguments",
 - (id)initWithCoder:(CPCoder)aCoder
 {
     self = [super init];
-    
+
     if (self)
     {
         _returnValue = [aCoder decodeObjectForKey:CPInvocationReturnValue];
         _arguments = [aCoder decodeObjectForKey:CPInvocationArguments];
     }
-    
+
     return self;
 }
 

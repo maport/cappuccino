@@ -20,14 +20,15 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-@import "CPRange.j"
+@import "CPArray.j"
 @import "CPObject.j"
+@import "CPRange.j"
 
 #define _CPMaxRange(aRange) ((aRange).location + (aRange).length)
 #define _CPMakeRange(aLocation, aLength) { location:(aLocation), length:aLength }
 #define _CPMakeRangeCopy(aRange) { location:(aRange).location, length:(aRange).length }
 
-/*! 
+/*!
     @class CPIndexSet
     @ingroup foundation
     @brief A collection of unique integers.
@@ -129,6 +130,17 @@
     return self;
 }
 
+- (BOOL)isEqual:(id)anObject
+{
+    if (self === anObject)
+        return YES;
+
+    if (!anObject || ![anObject isKindOfClass:[CPIndexSet class]])
+        return NO;
+
+    return [self isEqualToIndexSet:anObject];
+}
+
 // Querying an Index Set
 /*!
     Compares the receiver with the provided index set.
@@ -147,7 +159,7 @@
     var rangesCount = _ranges.length,
         otherRanges = anIndexSet._ranges;
 
-    // If we have a discrepency in the number of ranges or the number of indexes,
+    // If we have a discrepancy in the number of ranges or the number of indexes,
     // simply return NO.
     if (rangesCount !== otherRanges.length || _count !== anIndexSet._count)
         return NO;
@@ -157,6 +169,13 @@
             return NO;
 
     return YES;
+}
+
+- (BOOL)isEqual:(id)anObject
+{
+    return  self === anObject ||
+            [anObject isKindOfClass:[self class]] &&
+            [self isEqualToIndexSet:anObject];
 }
 
 /*!
@@ -179,7 +198,7 @@
         return NO;
 
     // If we have less total indexes than aRange, we can't possibly contain aRange.
-    if(_count < aRange.length)
+    if (_count < aRange.length)
         return NO;
 
     // Search for first location
@@ -196,14 +215,14 @@
 }
 
 /*!
-    Returns \c YES if the receving index set contains all the indices in the argument.
+    Returns \c YES if the receiving index set contains all the indices in the argument.
     @param anIndexSet the set of indices to check for in the receiving index set
 */
 - (BOOL)containsIndexes:(CPIndexSet)anIndexSet
 {
     var otherCount = anIndexSet._count;
 
-    if(otherCount <= 0)
+    if (otherCount <= 0)
         return YES;
 
     // If we have less total indexes than anIndexSet, we can't possibly contain aRange.
@@ -692,17 +711,17 @@
     var i = _ranges.length - 1,
         shifted = CPMakeRange(CPNotFound, 0);
 
-    for(; i >= 0; --i)
+    for (; i >= 0; --i)
     {
         var range = _ranges[i],
             maximum = CPMaxRange(range);
 
-        if (anIndex > maximum)
+        if (anIndex >= maximum)
             break;
 
-        // If our index is within our range, but not the first index, 
+        // If our index is within our range, but not the first index,
         // then this range will be split.
-        if (anIndex > range.location && anIndex < maximum)
+        if (anIndex > range.location)
         {
             // Split the range into shift and unshifted.
             shifted = CPMakeRange(anIndex + aDelta, maximum - anIndex);
@@ -726,6 +745,7 @@
         // Shift the range, and normalize it if the result is negative.
         if ((range.location += aDelta) < 0)
         {
+            _count -= range.length - CPMaxRange(range);
             range.length = CPMaxRange(range);
             range.location = 0;
         }
@@ -816,7 +836,7 @@ var CPIndexSetCountKey              = @"CPIndexSetCountKey",
 /*!
     Creates a deep copy of the index set. The returned copy
     is mutable. The reason for the two copy methods is for
-    source compatability with GNUStep code.
+    source compatibility with GNUStep code.
     @return the index set copy
 */
 - (id)copy
@@ -827,7 +847,7 @@ var CPIndexSetCountKey              = @"CPIndexSetCountKey",
 /*!
     Creates a deep copy of the index set. The returned copy
     is mutable. The reason for the two copy methods is for
-    source compatability with GNUStep code.
+    source compatibility with GNUStep code.
     @return the index set copy
 */
 - (id)mutableCopy
@@ -839,11 +859,11 @@ var CPIndexSetCountKey              = @"CPIndexSetCountKey",
 
 /*!
     @class CPMutableIndexSet
-    @ingroup compatability
+    @ingroup compatibility
 
     This class is an empty of subclass of CPIndexSet.
     CPIndexSet already implements mutable methods, and
-    this class only exists for source compatability.
+    this class only exists for source compatibility.
 */
 @implementation CPMutableIndexSet : CPIndexSet
 

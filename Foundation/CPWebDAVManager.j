@@ -1,3 +1,32 @@
+/*
+ * CPWebDAVManager.j
+ * Foundation
+ *
+ * Created by Francisco Tolmasky.
+ * Copyright 2008, 280 North, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+@import "CPArray.j"
+@import "CPDictionary.j"
+@import "CPObject.j"
+@import "CPString.j"
+@import "CPURL.j"
+@import "CPURLConnection.j"
+@import "CPURLRequest.j"
 
 var setURLResourceValuesForKeysFromProperties = function(aURL, keys, properties)
 {
@@ -73,7 +102,7 @@ CPWebDAVManagerNonCollectionResourceType    = 0;
     }
 
     if (!aBlock)
-        return makeContents(aURL, response);
+        return makeContents(aURL, [self PROPFIND:aURL properties:properties depth:1 block:nil]);
 
     [self PROPFIND:aURL properties:properties depth:1 block:function(aURL, response)
     {
@@ -149,7 +178,7 @@ WebDAVPropertiesForURLKeys[CPURLIsDirectoryKey]     = @"resourcetype";
 //CPURLCustomIconKey                  = @"CPURLCustomIconKey";
 
 var XMLDocumentFromString = function(anXMLString)
-{//console.log(anXMLString);
+{
     if (typeof window["ActiveXObject"] !== "undefined")
     {
         var XMLDocument = new ActiveXObject("Microsoft.XMLDOM");
@@ -168,9 +197,8 @@ var parsePROPFINDResponse = function(anXMLString)
     var XMLDocument = XMLDocumentFromString(anXMLString),
         responses = XMLDocument.getElementsByTagNameNS("*", "response"),
         responseIndex = 0,
-        responseCount = responses.length;
-
-    var propertiesForURLs = [CPDictionary dictionary];
+        responseCount = responses.length,
+        propertiesForURLs = [CPDictionary dictionary];
 
     for (; responseIndex < responseCount; ++responseIndex)
     {
@@ -195,7 +223,6 @@ var parsePROPFINDResponse = function(anXMLString)
 
             if (nodeName === @"resourcetype")
                 [properties setObject:element.firstChild ? CPWebDAVManagerCollectionResourceType : CPWebDAVManagerNonCollectionResourceType forKey:nodeName];
-
             else
                 [properties setObject:element.firstChild.nodeValue forKey:nodeName];
         }

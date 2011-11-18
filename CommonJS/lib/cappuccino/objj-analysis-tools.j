@@ -31,6 +31,11 @@ ObjectiveJRuntimeAnalyzer = function(rootPath)
         return url ? url.absoluteURL().path() : null;
     }
 
+    this.require("cappuccino/objj-flatten-additions");
+
+    if (!this.context.global.CFHTTPRequest._lookupCachedRequest)
+        print("Warning: CFHTTPRequest._lookupCachedRequest. Need to import objj-flatten-additions module.");
+
     var requestedURLs = this.requestedURLs = {};
     var _lookupCachedRequest = this.context.global.CFHTTPRequest._lookupCachedRequest;
     this.context.global.CFHTTPRequest._lookupCachedRequest = function(aURL) {
@@ -78,7 +83,7 @@ ObjectiveJRuntimeAnalyzer.prototype.initializeGlobalRecorder = function()
 
         if (before && currentFile) {
             self.files[currentFile] = self.files[currentFile] || {};
-            self.files[currentFile].globals = self.files[currentFile].global || {};
+            self.files[currentFile].globals = self.files[currentFile].globals || {};
 
             diff({
                 before : before,

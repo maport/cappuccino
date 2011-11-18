@@ -19,26 +19,27 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-@import <Foundation/CPObject.j>
+@import "CPArray.j"
+@import "CPObject.j"
 @import "CPOperation.j"
 
-
-/*! 
+/*!
     @class CPFunctionOperation
     @brief Represents an operation using a JavaScript function that can be run in an CPOperationQueue
 */
-@implementation CPFunctionOperation : CPOperation 
+@implementation CPFunctionOperation : CPOperation
 {
     CPArray _functions;
 }
 
-
-- (void)main 
+- (void)main
 {
-    if (_functions && [_functions count] > 0) 
+    if (_functions && [_functions count] > 0)
     {
-        var i = 0;
-        for (i = 0; i < [_functions count]; i++) 
+        var i = 0,
+            count = [_functions count];
+
+        for (; i < count; i++)
         {
             var func = [_functions objectAtIndex:i];
             func();
@@ -46,9 +47,11 @@
     }
 }
 
-- (id)init 
+- (id)init
 {
-    if (self = [super init]) 
+    self = [super init];
+
+    if (self)
     {
         _functions = [];
     }
@@ -58,7 +61,7 @@
 /*!
     Adds the specified JS function to the receiver’s list of functions to perform.
 */
-- (void)addExecutionFunction:(JSObject)jsFunction 
+- (void)addExecutionFunction:(JSObject)jsFunction
 {
     [_functions addObject:jsFunction];
 }
@@ -66,19 +69,19 @@
 /*!
     Returns an array containing the functions associated with the receiver.
 */
-- (CPArray)executionFunctions 
+- (CPArray)executionFunctions
 {
     return _functions;
 }
 
 /*!
-    Creates and returns an NSFunctionOperation object and adds the specified function to it.
+    Creates and returns an CPFunctionOperation object and adds the specified function to it.
 */
-+ (id)functionOperationWithFunction:(JSObject)jsFunction 
++ (id)functionOperationWithFunction:(JSObject)jsFunction
 {
     functionOp = [[CPFunctionOperation alloc] init];
     [functionOp addExecutionFunction:jsFunction];
-    
+
     return functionOp;
 }
 

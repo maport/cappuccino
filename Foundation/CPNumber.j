@@ -23,19 +23,17 @@
 @import "CPObject.j"
 @import "CPObjJRuntime.j"
 
+var CPNumberUIDs    = new CFMutableDictionary();
 
-var __placeholder   = new Number(),
-    CPNumberUIDs    = new CFMutableDictionary();
-
-/*! 
+/*!
     @class CPNumber
     @ingroup foundation
     @brief A bridged object to native Javascript numbers.
 
-    This class primarily exists for source compatability. The JavaScript
+    This class primarily exists for source compatibility. The JavaScript
     \c Number type can be changed on the fly based on context,
-    so there is no need to call any of these methods. 
-    
+    so there is no need to call any of these methods.
+
     In other words, native JavaScript numbers are bridged to CPNumber,
     so you can use them interchangeably (including operators and methods).
 */
@@ -43,7 +41,9 @@ var __placeholder   = new Number(),
 
 + (id)alloc
 {
-    return __placeholder;
+    var result = new Number();
+    result.isa = [self class];
+    return result;
 }
 
 + (id)numberWithBool:(BOOL)aBoolean
@@ -93,7 +93,7 @@ var __placeholder   = new Number(),
 {
     if (aChar.charCodeAt)
         return aChar.charCodeAt(0);
-    
+
     return aChar;
 }
 
@@ -126,7 +126,7 @@ var __placeholder   = new Number(),
 {
     if (aChar.charCodeAt)
         return aChar.charCodeAt(0);
-    
+
     return aChar;
 }
 
@@ -164,7 +164,7 @@ var __placeholder   = new Number(),
 {
     if (aChar.charCodeAt)
         return aChar.charCodeAt(0);
-    
+
     return aChar;
 }
 
@@ -217,14 +217,14 @@ FIXME: Do we need this?
 */
 - (CPDecimal)decimalValue
 {
-    objj_throw_exception("decimalValue: NOT YET IMPLEMENTED");
+    throw new Error("decimalValue: NOT YET IMPLEMENTED");
 }
 
 - (CPString)descriptionWithLocale:(CPDictionary)aDictionary
 {
     if (!aDictionary) return toString();
-    
-    objj_throw_exception("descriptionWithLocale: NOT YET IMPLEMENTED");
+
+    throw new Error("descriptionWithLocale: NOT YET IMPLEMENTED");
 }
 
 - (CPString)description
@@ -273,7 +273,7 @@ FIXME: Do we need this?
     return toString();
 }
 
-- (unsigned char)unsignedCharValue  
+- (unsigned char)unsignedCharValue
 {
     return String.fromCharCode(self);
 }
@@ -306,7 +306,7 @@ FIXME: Do we need this?
 {
     if (self > aNumber) return CPOrderedDescending;
     else if (self < aNumber) return CPOrderedAscending;
-    
+
     return CPOrderedSame;
 }
 

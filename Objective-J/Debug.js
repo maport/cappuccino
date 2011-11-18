@@ -20,6 +20,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#ifdef BROWSER
+CPLogRegister(CPLogDefault);
+#endif
+
 // formatting helpers
 
 function objj_debug_object_format(aReceiver)
@@ -89,7 +93,7 @@ GLOBAL(objj_backtrace_decorator) = function(msgSend)
     return function(aReceiverOrSuper, aSelector)
     {
         var aReceiver = aReceiverOrSuper && (aReceiverOrSuper.receiver || aReceiverOrSuper);
-        
+
         // push the receiver and selector onto the backtrace stack
         objj_backtrace.push({ receiver: aReceiver, selector : aSelector });
         try
@@ -98,14 +102,38 @@ GLOBAL(objj_backtrace_decorator) = function(msgSend)
         }
         catch (anException)
         {
-            // print the exception and backtrace
-            CPLog.warn("Exception " + anException + " in " + objj_debug_message_format(aReceiver, aSelector));
-            objj_backtrace_print(CPLog.warn);
+            if (objj_backtrace.length)
+            {
+                // print the exception and backtrace
+                CPLog.warn("Exception " + anException + " in " + objj_debug_message_format(aReceiver, aSelector));
+                objj_backtrace_print(CPLog.warn);
+                objj_backtrace = [];
+            }
+            // re-throw the exception
+            throw anException;
         }
         finally
         {
             // make sure to always pop
             objj_backtrace.pop();
+        }
+    }
+}
+
+GLOBAL(objj_supress_exceptions_decorator) = function(msgSend)
+{
+    return function(aReceiverOrSuper, aSelector)
+    {
+        var aReceiver = aReceiverOrSuper && (aReceiverOrSuper.receiver || aReceiverOrSuper);
+
+        try
+        {
+            return msgSend.apply(NULL, arguments);
+        }
+        catch (anException)
+        {
+            // print the exception and backtrace
+            CPLog.warn("Exception " + anException + " in " + objj_debug_message_format(aReceiver, aSelector));
         }
     }
 }

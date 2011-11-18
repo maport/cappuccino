@@ -21,7 +21,7 @@
  */
 
 @import "CPObject.j"
-
+@import "CPURL.j"
 
 /*
     CPURL       _URL;
@@ -32,7 +32,7 @@
 /*!
     @class CPURLResponse
     @ingroup foundation
-    @brief Protocol agnostic information about a request to a specifc URL.
+    @brief Protocol agnostic information about a request to a specific URL.
 
     Contains protocol agnostic information about a request to a specific URL.
 */
@@ -44,10 +44,10 @@
 - (id)initWithURL:(CPURL)aURL
 {
     self = [super init];
-    
+
     if (self)
         _URL = aURL;
-    
+
     return self;
 }
 
@@ -57,13 +57,13 @@
 }
 /*
 Creating a Response
-initWithURL:MIMEType:expectedContentLength:textEncodingName:  
+initWithURL:MIMEType:expectedContentLength:textEncodingName:
 Getting the Response Properties
-expectedContentLength  
-suggestedFilename  
-MIMEType  
-textEncodingName  
-URL  
+expectedContentLength
+suggestedFilename
+MIMEType
+textEncodingName
+URL
 */
 @end
 

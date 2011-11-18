@@ -20,18 +20,20 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-@import "CPObject.j"
-@import "CPString.j"
+@import "CPArray.j"
 @import "CPDictionary.j"
+@import "CPException.j"
+@import "CPObject.j"
 @import "CPRange.j"
+@import "CPString.j"
 
-/*! 
+/*!
     @class CPAttributedString
     @ingroup foundation
     @brief A mutable character string with attributes.
 
     A character string with sets of attributes that apply to single or ranges of
-    characters. The attributes are containted within a CPDictionary class.
+    characters. The attributes are contained within a CPDictionary class.
     Attributes can be any name/value pair. The data type of the value is not
     restricted.
     This class is mutable.
@@ -47,7 +49,7 @@
     CPArray     _rangeEntries;
 }
 
-//Creating an NSAttributedString Object
+// Creating a CPAttributedString Object
 /*!
     Creates a new attributed string from a character string.
     @param aString is the string to initialise from.
@@ -62,13 +64,13 @@
     Creates a new attributed string from an existing attributed string.
     @param aString is the attributed string to initialise from.
     @return a new CPAttributedString containing the string \c aString.
-*/ 
+*/
 - (id)initWithAttributedString:(CPAttributedString)aString
 {
     var string = [self initWithString:"" attributes:nil];
-    
+
     [string setAttributedString:aString];
-    
+
     return string;
 }
 
@@ -79,16 +81,19 @@
     @param attributes is a dictionary of string attributes.
     @return a new CPAttributedString containing the string \c aString
     with associated attributes, \c attributes.
-*/ 
+*/
 - (id)initWithString:(CPString)aString attributes:(CPDictionary)attributes
 {
     self = [super init];
-    
-    if (!attributes)
-        attributes = [CPDictionary dictionary];
 
-    _string = ""+aString;
-    _rangeEntries = [makeRangeEntry(CPMakeRange(0, _string.length), attributes)];
+    if (self)
+    {
+        if (!attributes)
+            attributes = [CPDictionary dictionary];
+
+        _string = ""+aString;
+        _rangeEntries = [makeRangeEntry(CPMakeRange(0, _string.length), attributes)];
+    }
 
     return self;
 }
@@ -98,7 +103,7 @@
     Returns a string containing the receiver's character data without
     attributes.
     @return a string of type CPString.
-*/ 
+*/
 - (CPString)string
 {
     return _string;
@@ -108,17 +113,17 @@
     Returns a string containing the receiver's character data without
     attributes.
     @return a string of type CPString.
-*/ 
+*/
 - (CPString)mutableString
 {
     return [self string];
-}   
+}
 
 /*!
     Get the length of the string.
     @return an unsigned integer equivalent to the number of characters in the
     string.
-*/ 
+*/
 - (unsigned)length
 {
     return _string.length;
@@ -142,14 +147,14 @@
             return CPOrderedAscending;
     }
 
-    return [_rangeEntries indexOfObject:anIndex sortedByFunction:sortFunction];
+    return [_rangeEntries indexOfObject:anIndex inSortedRange:nil options:0 usingComparator:sortFunction];
 }
 
 //Retrieving Attribute Information
 /*!
     Returns a dictionary of attributes for the character at a given index. The
     range in which this character resides in which the attributes are the
-    same, can be returned if desired. 
+    same, can be returned if desired.
     @note there is no guarantee that the range returned is in fact the complete
     range of the particular attributes. To ensure this use
     \c attributesAtIndex:longestEffectiveRange:inRange: instead. Note
@@ -160,10 +165,10 @@
     that is set (upon return) to the range over which the attributes are the
     same as those at index, \c anIndex. If not required pass
     \c nil.
-    @return a CPDictionary containing the attributes associated with the 
+    @return a CPDictionary containing the attributes associated with the
     character at index \c anIndex. Returns \c nil if index
     is out of bounds.
-*/ 
+*/
 - (CPDictionary)attributesAtIndex:(unsigned)anIndex effectiveRange:(CPRangePointer)aRange
 {
     //find the range entry that contains anIndex.
@@ -178,7 +183,7 @@
         aRange.location = matchingRange.range.location;
         aRange.length = matchingRange.range.length;
     }
-    
+
     return matchingRange.attributes;
 }
 
@@ -199,17 +204,17 @@
     to the range over which the attributes apply.
     @param rangeLimit a range limiting the search for the attributes' applicable
     range.
-    @return a CPDictionary containing the attributes associated with the 
+    @return a CPDictionary containing the attributes associated with the
     character at index \c anIndex. Returns \c nil if index
     is out of bounds.
-*/ 
+*/
 - (CPDictionary)attributesAtIndex:(unsigned)anIndex longestEffectiveRange:(CPRangePointer)aRange inRange:(CPRange)rangeLimit
-{    
+{
     var startingEntryIndex = [self _indexOfEntryWithIndex:anIndex];
 
     if (startingEntryIndex == CPNotFound)
         return nil;
-    
+
     if (!aRange)
         return _rangeEntries[startingEntryIndex].attributes;
 
@@ -217,7 +222,7 @@
     {
         aRange.location = rangeLimit.location;
         aRange.length = rangeLimit.length;
-        
+
         return _rangeEntries[startingEntryIndex].attributes;
     }
 
@@ -257,7 +262,7 @@
         else
             break;
     }
-        
+
     aRange.length = MIN(CPMaxRange(currentEntry.range), CPMaxRange(rangeLimit)) - aRange.location;
 
     return comparisonDict;
@@ -265,7 +270,7 @@
 
 /*!
     Returns the specified named attribute for the given character index and, if
-    required, the range over which the attribute applies. 
+    required, the range over which the attribute applies.
     @note there is no guarantee that the range returned is in fact the complete
     range of a particular attribute. To ensure this use
     \c -attribute:atIndex:longestEffectiveRange:inRange: instead but
@@ -278,7 +283,7 @@
     \c nil.
     @return the named attribute or \c nil is the attribute does not
     exist.
-*/ 
+*/
 - (id)attribute:(CPString)attribute atIndex:(unsigned)index effectiveRange:(CPRangePointer)aRange
 {
     if (!attribute)
@@ -320,7 +325,7 @@
 {
     //find the range entry that contains anIndex.
     var startingEntryIndex = [self _indexOfEntryWithIndex:anIndex];
-    
+
     if (startingEntryIndex == CPNotFound || !attribute)
         return nil;
 
@@ -331,7 +336,7 @@
     {
         aRange.location = rangeLimit.location;
         aRange.length = rangeLimit.length;
-        
+
         return [_rangeEntries[startingEntryIndex].attributes objectForKey:attribute];
     }
 
@@ -371,7 +376,7 @@
         else
             break;
     }
-        
+
     aRange.length = MIN(CPMaxRange(currentEntry.range), CPMaxRange(rangeLimit)) - aRange.location;
 
     return comparisonAttribute;
@@ -386,11 +391,11 @@
 */
 - (BOOL)isEqualToAttributedString:(CPAttributedString)aString
 {
-	if(!aString)
-		return NO;
+    if (!aString)
+        return NO;
 
-	if(_string != [aString string])
-		return NO;
+    if (_string != [aString string])
+        return NO;
 
     var myRange = CPMakeRange(),
         comparisonRange = CPMakeRange(),
@@ -407,7 +412,7 @@
         else
             comparisonAttributes = [aString attributesAtIndex:CPMaxRange(comparisonRange) effectiveRange:comparisonRange];
     }
-    
+
     return YES;
 }
 
@@ -420,13 +425,13 @@
 */
 - (BOOL)isEqual:(id)anObject
 {
-	if (anObject == self)
-		return YES;
-		
-	if ([anObject isKindOfClass:[self class]])
-		return [self isEqualToAttributedString:anObject];
-		
-	return NO;
+    if (anObject == self)
+        return YES;
+
+    if ([anObject isKindOfClass:[self class]])
+        return [self isEqualToAttributedString:anObject];
+
+    return NO;
 }
 
 //Extracting a Substring
@@ -440,7 +445,7 @@
 - (CPAttributedString)attributedSubstringFromRange:(CPRange)aRange
 {
     if (!aRange || CPMaxRange(aRange) > _string.length || aRange.location < 0)
-        [CPException raise:CPRangeException 
+        [CPException raise:CPRangeException
                     reason:"tried to get attributedSubstring for an invalid range: "+(aRange?CPStringFromRange(aRange):"nil")];
 
     var newString = [[CPAttributedString alloc] initWithString:_string.substring(aRange.location, CPMaxRange(aRange))],
@@ -449,7 +454,7 @@
         lastIndex = CPMaxRange(aRange);
 
     newString._rangeEntries = [];
-    
+
     while (currentRangeEntry && CPMaxRange(currentRangeEntry.range) < lastIndex)
     {
         var newEntry = copyRangeEntry(currentRangeEntry);
@@ -468,10 +473,10 @@
     if (currentRangeEntry)
     {
         var newRangeEntry = copyRangeEntry(currentRangeEntry);
-    
+
         newRangeEntry.range.length = CPMaxRange(aRange) - newRangeEntry.range.location;
         newRangeEntry.range.location -= aRange.location;
-        
+
         if (newRangeEntry.range.location < 0)
         {
             newRangeEntry.range.length += newRangeEntry.range.location;
@@ -480,12 +485,12 @@
 
         newString._rangeEntries.push(newRangeEntry);
     }
-    
+
     return newString;
 }
 
 //Changing Characters
-/*! 
+/*!
     Replaces the characters in the receiver with those of the specified string
     over the range, \c aRange. If the range has a length of 0 then
     the specified string is inserted at the range location. The new characters
@@ -501,14 +506,12 @@
 */
 - (void)replaceCharactersInRange:(CPRange)aRange withString:(CPString)aString
 {
-    [self beginEditing];
-
     if (!aString)
         aString = "";
-        
+
     var startingIndex = [self _indexOfEntryWithIndex:aRange.location],
         startingRangeEntry = _rangeEntries[startingIndex],
-        endingIndex = [self _indexOfEntryWithIndex:MAX(CPMaxRange(aRange)-1, 0)],
+        endingIndex = [self _indexOfEntryWithIndex:MAX(CPMaxRange(aRange) - 1, 0)],
         endingRangeEntry = _rangeEntries[endingIndex],
         additionalLength = aString.length - aRange.length;
 
@@ -527,11 +530,9 @@
     }
 
     endingIndex = startingIndex + 1;
-    
-    while(endingIndex < _rangeEntries.length)
-        _rangeEntries[endingIndex++].range.location+=additionalLength;
-    
-    [self endEditing];
+
+    while (endingIndex < _rangeEntries.length)
+        _rangeEntries[endingIndex++].range.location += additionalLength;
 }
 
 /*!
@@ -545,9 +546,9 @@
 
 //Changing Attributes
 /*!
-    Sets the attributes of the specified character range. 
+    Sets the attributes of the specified character range.
 
-    @note This process removes the attributes already associated with the 
+    @note This process removes the attributes already associated with the
     character range. If you wish to retain the current attributes use
     \c -addAttributes:range:.
     @param aDictionary a CPDictionary of attributes (names and values) to set
@@ -557,8 +558,6 @@
 */
 - (void)setAttributes:(CPDictionary)aDictionary range:(CPRange)aRange
 {
-    [self beginEditing];
-
     var startingEntryIndex = [self _indexOfRangeEntryForIndex:aRange.location splitOnMaxIndex:YES],
         endingEntryIndex = [self _indexOfRangeEntryForIndex:CPMaxRange(aRange) splitOnMaxIndex:YES],
         current = startingEntryIndex;
@@ -571,24 +570,20 @@
 
     //necessary?
     [self _coalesceRangeEntriesFromIndex:startingEntryIndex toIndex:endingEntryIndex];
-
-    [self endEditing];
 }
 
 /*!
-    Add a collection of attributes to the specified character range. 
+    Add a collection of attributes to the specified character range.
 
     @note Attributes currently associated with the characters in the range are
     untouched. To remove all previous attributes when adding use
-    \c -setAttributes:range:.  
+    \c -setAttributes:range:.
     @param aDictionary a CPDictionary of attributes (names and values) to add.
     @param aRange a CPRange indicating the range of characters to add the
     attributes to.
 */
 - (void)addAttributes:(CPDictionary)aDictionary range:(CPRange)aRange
 {
-    [self beginEditing];
-
     var startingEntryIndex = [self _indexOfRangeEntryForIndex:aRange.location splitOnMaxIndex:YES],
         endingEntryIndex = [self _indexOfRangeEntryForIndex:CPMaxRange(aRange) splitOnMaxIndex:YES],
         current = startingEntryIndex;
@@ -600,7 +595,7 @@
     {
         var keys = [aDictionary allKeys],
             count = [keys count];
-            
+
         while (count--)
             [_rangeEntries[current].attributes setObject:[aDictionary objectForKey:keys[count]] forKey:keys[count]];
 
@@ -609,8 +604,6 @@
 
     //necessary?
     [self _coalesceRangeEntriesFromIndex:startingEntryIndex toIndex:endingEntryIndex];
-
-    [self endEditing];
 }
 
 /*!
@@ -638,8 +631,6 @@
 */
 - (void)removeAttribute:(CPString)anAttribute range:(CPRange)aRange
 {
-    [self beginEditing];
-
     var startingEntryIndex = [self _indexOfRangeEntryForIndex:aRange.location splitOnMaxIndex:YES],
         endingEntryIndex = [self _indexOfRangeEntryForIndex:CPMaxRange(aRange) splitOnMaxIndex:YES],
         current = startingEntryIndex;
@@ -652,8 +643,6 @@
 
     //necessary?
     [self _coalesceRangeEntriesFromIndex:startingEntryIndex toIndex:endingEntryIndex];
-
-    [self endEditing];
 }
 
 //Changing Characters and Attributes
@@ -678,8 +667,6 @@
 */
 - (void)insertAttributedString:(CPAttributedString)aString atIndex:(unsigned)anIndex
 {
-    [self beginEditing];
-
     if (anIndex < 0 || anIndex > [self length])
         [CPException raise:CPRangeException reason:"tried to insert attributed string at an invalid index: "+anIndex];
 
@@ -703,14 +690,12 @@
     {
         var entryCopy = copyRangeEntry(otherRangeEntries[index++]);
         entryCopy.range.location += anIndex;
-        
-        _rangeEntries.splice(entryIndexOfNextEntry-1+index, 0, entryCopy);
+
+        _rangeEntries.splice(entryIndexOfNextEntry - 1 + index, 0, entryCopy);
     }
 
     //necessary?
     //[self _coalesceRangeEntriesFromIndex:startingEntryIndex toIndex:startingEntryIndex+rangeEntries.length];
-
-    [self endEditing];
 }
 
 /*!
@@ -723,12 +708,8 @@
 */
 - (void)replaceCharactersInRange:(CPRange)aRange withAttributedString:(CPAttributedString)aString
 {
-    [self beginEditing];
-        
     [self deleteCharactersInRange:aRange];
     [self insertAttributedString:aString atIndex:aRange.location];
-    
-    [self endEditing];
 }
 
 /*!
@@ -738,30 +719,29 @@
 */
 - (void)setAttributedString:(CPAttributedString)aString
 {
-    [self beginEditing];
-    
     _string = aString._string;
     _rangeEntries = [];
-    
-    for (var i=0, count = aString._rangeEntries.length; i<count; i++)
-        _rangeEntries.push(copyRangeEntry(aString._rangeEntries[i]));
 
-    [self endEditing];
+    var i = 0,
+        count = aString._rangeEntries.length;
+
+    for (; i < count; i++)
+        _rangeEntries.push(copyRangeEntry(aString._rangeEntries[i]));
 }
 
 //Private methods
 - (Number)_indexOfRangeEntryForIndex:(unsigned)characterIndex splitOnMaxIndex:(BOOL)split
 {
     var index = [self _indexOfEntryWithIndex:characterIndex];
-    
+
     if (index < 0)
         return index;
 
     var rangeEntry = _rangeEntries[index];
-    
+
     if (rangeEntry.range.location == characterIndex || (CPMaxRange(rangeEntry.range) - 1 == characterIndex && !split))
         return index;
-        
+
     var newEntries = splitRangeEntryAtIndex(rangeEntry, characterIndex);
     _rangeEntries.splice(index, 1, newEntries[0], newEntries[1]);
     index++;
@@ -774,17 +754,17 @@
     var current = start;
 
     if (end >= _rangeEntries.length)
-        end = _rangeEntries.length -1;
+        end = _rangeEntries.length - 1;
 
     while (current < end)
     {
         var a = _rangeEntries[current],
-            b = _rangeEntries[current+1];
+            b = _rangeEntries[current + 1];
 
         if ([a.attributes isEqualToDictionary:b.attributes])
         {
             a.range.length = CPMaxRange(b.range) - a.range.location;
-            _rangeEntries.splice(current+1, 1);
+            _rangeEntries.splice(current + 1, 1);
             end--;
         }
         else
@@ -815,13 +795,14 @@
 
 /*!
     @class CPMutableAttributedString
-    @ingroup compatability
+    @ingroup compatibility
 
     This class is just an empty subclass of CPAttributedString.
     CPAttributedString already implements mutable methods and
-    this class only exists for source compatability.
+    this class only exists for source compatibility.
 */
-@implementation CPMutableAttributedString : CPAttributedString {}
+@implementation CPMutableAttributedString : CPAttributedString
+
 @end
 
 var isEqual = function isEqual(a, b)
@@ -849,11 +830,11 @@ var splitRangeEntry = function splitRangeEntryAtIndex(/*RangeEntry*/aRangeEntry,
 {
     var newRangeEntry = copyRangeEntry(aRangeEntry),
         cachedIndex = CPMaxRange(aRangeEntry.range);
-    
+
     aRangeEntry.range.length = anIndex - aRangeEntry.range.location;
     newRangeEntry.range.location = anIndex;
     newRangeEntry.range.length = cachedIndex - anIndex;
     newRangeEntry.attributes = [newRangeEntry.attributes copy];
-    
+
     return [aRangeEntry, newRangeEntry];
 }

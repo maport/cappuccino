@@ -8,9 +8,12 @@ require("narwhal").ensureEngine("rhino");
 
 var FILE = require("file");
 var OS = require("os");
+var UTIL = require("narwhal/util");
 
-var stream = require("term").stream;
-var parser = new (require("args").Parser)();
+var CACHEMANIFEST = require("objective-j/cache-manifest");
+
+var stream = require("narwhal/term").stream;
+var parser = new (require("narwhal/args").Parser)();
 
 parser.usage("INPUT_PROJECT OUTPUT_PROJECT");
 parser.help("Combine a Cappuccino application into a single JavaScript file.");
@@ -24,6 +27,10 @@ parser.option("-F", "--framework", "frameworks")
     .push()
     .help("Add a frameworks directory, relative to INPUT_PROJECT (default: ['Frameworks'])");
 
+parser.option("-P", "--path", "paths")
+    .push()
+    .help("Add a path (relative to the application root) to inline.");
+
 parser.option("-f", "--force", "force")
     .def(false)
     .set(true)
@@ -33,6 +40,20 @@ parser.option("--index", "index")
     .def("index.html")
     .set()
     .help("The root HTML file to modify (default: index.html)");
+
+parser.option("-s", "--split", "number", "split")
+    .natural()
+    .def(0)
+    .help("Split into multiple files");
+
+parser.option("-c", "--compressor", "compressor")
+    .def("shrinksafe")
+    .set()
+    .help("Select a compressor to use (closure-compiler, yuicompressor, shrinksafe), or \"none\" (default: shrinksafe)");
+
+parser.option("--manifest", "manifest")
+    .set(true)
+    .help("Generate HTML5 cache manifest.");
 
 parser.option("-v", "--verbose", "verbose")
    .def(false)
@@ -81,49 +102,119 @@ function main(args)
 
     var flattener = new ObjectiveJFlattener(rootPath);
 
+    flattener.options = options;
+
     flattener.setIncludePaths(frameworks);
     flattener.setEnvironments([environment, "ObjJ"]);
 
+    print("Loading application.");
     flattener.load(mainPath);
-    flattener.finishLoading();
 
-    var applicationJS = flattener.buildApplicationJS();
+    print("Loading default theme.");
+    flattener.require("objective-j").objj_eval("("+(function() {
+    
+        var defaultThemeName = [CPApplication defaultThemeName],
+            bundle = nil;
+
+        if (defaultThemeName === @"Aristo")
+            bundle = [CPBundle bundleForClass:[CPApplication class]];
+        else
+            bundle = [CPBundle mainBundle];
+
+        var blend = [[CPThemeBlend alloc] initWithContentsOfURL:[bundle pathForResource:defaultThemeName + @".blend"]];
+        [blend loadWithDelegate:nil];
+
+    })+")")();
+
+    var applicationJSs = flattener.buildApplicationJS();
 
     FILE.copyTree(rootPath, outputPath);
 
-    outputPath.join("Application.js").write(applicationJS);
+    applicationJSs.forEach(function(applicationJS, n) {
+        var name = "Application"+(n||"")+".js";
+        if (options.compressor === "none") {
+            print("skipping compression: " + name);
+        } else {
+            print("compressing: " + name);
+            applicationJS = require("minify/"+options.compressor).compress(applicationJS, { charset : "UTF-8", useServer : true });
+        }
+        outputPath.join(name).write(applicationJS, { charset : "UTF-8" });
+    });
 
     rewriteMainHTML(outputPath.join(options.index));
+
+    if (options.manifest) {
+        CACHEMANIFEST.generateManifest(outputPath, {
+            index : outputPath.join(options.index),
+            exclude : Object.keys(flattener.filesToCache).map(function(path) { return outputPath.join(path).toString(); })
+        });
+    }
 }
 
 // ObjectiveJFlattener inherits from ObjectiveJRuntimeAnalyzer
 function ObjectiveJFlattener(rootPath) {
     ObjectiveJRuntimeAnalyzer.apply(this, arguments);
 
+    this.filesToCache = {};
     this.fileCacheBuffer = [];
-
-    this.staticResourceBuffer = [];
-    this.bundleBuffer = [];
     this.functionsBuffer = [];
-
-    this._outputBundles = {};
 }
 
 ObjectiveJFlattener.prototype = Object.create(ObjectiveJRuntimeAnalyzer.prototype);
 
 ObjectiveJFlattener.prototype.buildApplicationJS = function() {
 
+    this.setupFileCache();
     this.serializeFunctions();
     this.serializeFileCache();
 
-    var buffer = [];
+    var additions = FILE.read(FILE.join(FILE.dirname(module.path), "..", "..", "cappuccino", "lib", "cappuccino", "objj-flatten-additions.js"), { charset:"UTF-8" });
 
-    buffer.push("var baseURL = new CFURL(\".\", ObjectiveJ.pageURL);");
-    buffer.push(this.fileCacheBuffer.join("\n"))
-    buffer.push(this.functionsBuffer.join("\n"));
-    buffer.push("ObjectiveJ.bootstrap();");
+    var applicationJSs = [];
 
-    return buffer.join("\n");
+    if (this.options.split === 0) {
+        var buffer = [];
+        buffer.push("var baseURL = new CFURL(\".\", ObjectiveJ.pageURL);");
+        buffer.push(additions);
+        buffer.push(this.fileCacheBuffer.join("\n"));
+        buffer.push(this.functionsBuffer.join("\n"));
+        buffer.push("ObjectiveJ.bootstrap();");
+        applicationJSs.push(buffer.join("\n"));
+    } else {
+        var appFilesCount = this.options.split;
+
+        var buffers = [];
+        for (var i = 0; i <= appFilesCount; i++)
+            buffers.push([]);
+
+        var chunks = this.fileCacheBuffer.concat(this.functionsBuffer).sort(function(chunkA, chunkB) {
+            return chunkA.length - chunkB.length;
+        });
+
+        // try to equally distribute the chunks. could be better but good enough for now.
+        var n = 0;
+        while (chunks.length) {
+            buffers[(n++ % appFilesCount) + 1].push(chunks.pop());
+        }
+
+        buffers[0].push("var baseURL = new CFURL(\".\", ObjectiveJ.pageURL);");
+        buffers[0].push(additions);
+
+        buffers[0].push("var appFilesCount = " + appFilesCount +";");
+        buffers[0].push("for (var i = 1; i <= appFilesCount; i++) {");
+        buffers[0].push("    var script = document.createElement(\"script\");");
+        buffers[0].push("    script.src = \"Application\"+i+\".js\";");
+        buffers[0].push("    script.charset = \"UTF-8\";");
+        buffers[0].push("    script.onload = function() { if (--appFilesCount === 0) ObjectiveJ.bootstrap(); };");
+        buffers[0].push("    document.getElementsByTagName(\"head\")[0].appendChild(script);");
+        buffers[0].push("}");
+
+        buffers.forEach(function(buffer) {
+            applicationJSs.push(buffer.join("\n"));
+        });
+    }
+
+    return applicationJSs;
 }
 
 ObjectiveJFlattener.prototype.serializeFunctions = function() {
@@ -142,7 +233,7 @@ ObjectiveJFlattener.prototype.serializeFunctions = function() {
             var functionString = executable._function.toString().replace(", require, exports, module, system, print, window", ""); // HACK
 
             var relative = this.rootPath.relative(path).toString();
-            this.functionsBuffer.push("ObjectiveJ.FileExecutable._cacheFunction(new CFURL("+JSON.stringify(relative)+", baseURL), "+functionString+");");
+            this.functionsBuffer.push("ObjectiveJ.FileExecutable._cacheFunction(new CFURL("+JSON.stringify(relative)+", baseURL),\n"+functionString+");");
         }
 
         var bundle = this.context.global.CFBundle.bundleContainingURL(path);
@@ -181,12 +272,31 @@ ObjectiveJFlattener.prototype.serializeFunctions = function() {
     {
         var relative = this.rootPath.relative(executablePath).toString();
         var contents = outputFiles[executablePath].join("");
-        this.fileCacheBuffer.push("CFHTTPRequest._cacheRequest(new CFURL("+JSON.stringify(relative)+", baseURL), 200, {}, "+JSON.stringify(contents)+");");
+        this.filesToCache[relative] = contents;
     }
 }
 
 ObjectiveJFlattener.prototype.serializeFileCache = function() {
-    Object.keys(this.requestedURLs).forEach(function(absolute) {
+    for (var relative in this.filesToCache) {
+        var contents = this.filesToCache[relative];
+        print("caching: " + relative + " => " + (contents == null ? 404 : 200));
+        if (contents == null)
+            this.fileCacheBuffer.push("CFHTTPRequest._cacheRequest(new CFURL("+JSON.stringify(relative)+", baseURL), 404);");
+        else
+            this.fileCacheBuffer.push("CFHTTPRequest._cacheRequest(new CFURL("+JSON.stringify(relative)+", baseURL), 200, {}, "+JSON.stringify(contents)+");");
+    }
+}
+
+ObjectiveJFlattener.prototype.setupFileCache = function() {
+    var paths = {};
+
+    UTIL.update(paths, this.requestedURLs);
+
+    this.options.paths.forEach(function(relativePath) {
+       paths[this.rootPath.join(relativePath)] = true;
+    }, this);
+
+    Object.keys(paths).forEach(function(absolute) {
         var relative = this.rootPath.relative(absolute).toString();
         if (relative.indexOf("..") === 0)
         {
@@ -196,36 +306,46 @@ ObjectiveJFlattener.prototype.serializeFileCache = function() {
 
         if (FILE.isFile(absolute))
         {
-            if (FILE.extension(absolute) === ".sj")
-            {
-                print("skipping (bundle executable): " + absolute);
-                return;
-            }
             // if (this.options.maxCachedSize && FILE.size(absolute) > this.options.maxCachedSize)
             // {
             //     print("skipping (larger than "+this.options.maxCachedSize+" bytes): " + absolute);
             //     return;
             // }
 
-            print("caching: " + absolute);
             var contents = FILE.read(absolute, { charset : "UTF-8" });
-            this.fileCacheBuffer.push("CFHTTPRequest._cacheRequest(new CFURL("+JSON.stringify(relative)+", baseURL), 200, {}, "+JSON.stringify(contents)+");");
+            this.filesToCache[relative] = contents;
         } else {
-            this.fileCacheBuffer.push("CFHTTPRequest._cacheRequest(new CFURL("+JSON.stringify(relative)+", baseURL), 404);");
+            this.filesToCache[relative] = null;
         }
     }, this);
 }
 
 // "$1" is the matching indentation
-var scriptTagsBefore = '$1<script type = "text/javascript">\n$1    OBJJ_AUTO_BOOTSTRAP = false;\n$1</script>';
-var scriptTagsAfter  = '$1<script type = "text/javascript" src = "Application.js"></script>';
+var scriptTagsBefore =
+    '$1<script type = "text/javascript">\n'+
+    '$1    OBJJ_AUTO_BOOTSTRAP = false;\n'+
+    '$1</script>';
+
+var scriptTagsAfter =
+    '$1<script type="text/javascript" src="Application.js" charset="UTF-8"></script>';
 
 // enable CPLog:
-// scriptTagsAfter = '$1<script type = "text/javascript">\n$1    CPLogRegister(CPLogConsole);\n$1</script>\n' + scriptTagsAfter;
+// scriptTagsAfter = '$1<script type="text/javascript">\n$1    CPLogRegister(CPLogConsole);\n$1</script>\n' + scriptTagsAfter;
 
 function rewriteMainHTML(indexHTMLPath) {
     if (indexHTMLPath.isFile()) {
-        var indexHTML = indexHTMLPath.read();
+        var indexHTML = indexHTMLPath.read({ charset : "UTF-8" });
+
+        // inline the Application.js if it's smallish
+        var applicationJSPath = indexHTMLPath.dirname().join("Application.js");
+        if (applicationJSPath.size() < 10*1024) {
+            // escape any dollar signs by replacing them with two
+            // then indent by splitting/joining on newlines
+            scriptTagsAfter =
+                '$1<script type="text/javascript">\n'+
+                '$1    ' + applicationJSPath.read({ charset : "UTF-8" }).replace(/\$/g, "$$$$").split("\n").join("\n$1    ")+'\n'+
+                '$1</script>';
+        }
 
         // attempt to find Objective-J script tag and add ours
         var newIndexHTML = indexHTML.replace(/([ \t]+)<script[^>]+Objective-J\.js[^>]+>(?:\s*<\/script>)?/,
@@ -233,7 +353,7 @@ function rewriteMainHTML(indexHTMLPath) {
 
         if (newIndexHTML !== indexHTML) {
             stream.print("\0green(Modified: "+indexHTMLPath+".\0)");
-            indexHTMLPath.write(newIndexHTML);
+            indexHTMLPath.write(newIndexHTML, { charset : "UTF-8" });
             return;
         }
     } else {

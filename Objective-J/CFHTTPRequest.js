@@ -92,15 +92,23 @@ if (!NativeRequest)
 
 GLOBAL(CFHTTPRequest) = function()
 {
+    this._isOpen = false;
+    this._requestHeaders = {};
+    this._mimeType = null;
+
     this._eventDispatcher = new EventDispatcher(this);
     this._nativeRequest = new NativeRequest();
 
     var self = this;
-
-    this._nativeRequest.onreadystatechange = function()
+    this._stateChangeHandler = function()
     {
         determineAndDispatchHTTPRequestEvents(self);
     }
+
+    this._nativeRequest.onreadystatechange = this._stateChangeHandler;
+
+    if (CFHTTPRequest.AuthenticationDelegate !== nil)
+        this._eventDispatcher.addEventListener("HTTP403", function(){CFHTTPRequest.AuthenticationDelegate(self)});
 }
 
 CFHTTPRequest.UninitializedState    = 0;
@@ -108,6 +116,9 @@ CFHTTPRequest.LoadingState          = 1;
 CFHTTPRequest.LoadedState           = 2;
 CFHTTPRequest.InteractiveState      = 3;
 CFHTTPRequest.CompleteState         = 4;
+
+//override to forward all CFHTTPRequest authorization failures to a single function
+CFHTTPRequest.AuthenticationDelegate = nil;
 
 CFHTTPRequest.prototype.status = function()
 {
@@ -177,7 +188,7 @@ CFHTTPRequest.prototype.responseText = function()
 
 CFHTTPRequest.prototype.setRequestHeader = function(/*String*/ aHeader, /*Object*/ aValue)
 {
-    return this._nativeRequest.setRequestHeader(aHeader, aValue);
+    this._requestHeaders[aHeader] = aValue;
 }
 
 CFHTTPRequest.prototype.getResponseHeader = function(/*String*/ aHeader)
@@ -192,22 +203,40 @@ CFHTTPRequest.prototype.getAllResponseHeaders = function()
 
 CFHTTPRequest.prototype.overrideMimeType = function(/*String*/ aMimeType)
 {
-    if ("overrideMimeType" in this._nativeRequest)
-        return this._nativeRequest.overrideMimeType(aMimeType);
+    this._mimeType = aMimeType;
 }
 
-CFHTTPRequest.prototype.open = function(/*String*/ method, /*String*/ url, /*Boolean*/ async, /*String*/ user, /*String*/ password)
+CFHTTPRequest.prototype.open = function(/*String*/ aMethod, /*String*/ aURL, /*Boolean*/ isAsynchronous, /*String*/ aUser, /*String*/ aPassword)
 {
-    var cachedRequest = CFHTTPRequest._lookupCachedRequest(url);
-    if (cachedRequest) {
-        cachedRequest.onreadystatechange = this._nativeRequest.onreadystatechange;
-        this._nativeRequest = cachedRequest;
-    }
-    return this._nativeRequest.open(method, url, async, user, password);
+    this._isOpen = true;
+    this._URL = aURL;
+    this._async = isAsynchronous;
+    this._method = aMethod;
+    this._user = aUser;
+    this._password = aPassword;
+    return this._nativeRequest.open(aMethod, aURL, isAsynchronous, aUser, aPassword);
 }
 
 CFHTTPRequest.prototype.send = function(/*Object*/ aBody)
 {
+    if (!this._isOpen)
+    {
+        delete this._nativeRequest.onreadystatechange;
+        this._nativeRequest.open(this._method, this._URL, this._async, this._user, this._password);
+        this._nativeRequest.onreadystatechange = this._stateChangeHandler;
+    }
+
+    for (var i in this._requestHeaders)
+    {
+        if (this._requestHeaders.hasOwnProperty(i))
+            this._nativeRequest.setRequestHeader(i, this._requestHeaders[i]);
+    }
+
+    if (this._mimeType && "overrideMimeType" in this._nativeRequest)
+        this._nativeRequest.overrideMimeType(this._mimeType);
+
+    this._isOpen = false;
+
     try
     {
         return this._nativeRequest.send(aBody);
@@ -221,6 +250,7 @@ CFHTTPRequest.prototype.send = function(/*Object*/ aBody)
 
 CFHTTPRequest.prototype.abort = function()
 {
+    this._isOpen = false;
     return this._nativeRequest.abort();
 }
 
@@ -241,20 +271,20 @@ function determineAndDispatchHTTPRequestEvents(/*CFHTTPRequest*/ aRequest)
     eventDispatcher.dispatchEvent({ type:"readystatechange", request:aRequest});
 
     var nativeRequest = aRequest._nativeRequest,
-        readyState = ["uninitialized", "loading", "loaded", "interactive", "complete"][aRequest.readyState()];
+        readyStates = ["uninitialized", "loading", "loaded", "interactive", "complete"];
 
-    eventDispatcher.dispatchEvent({ type:readyState, request:aRequest});
-
-    if (readyState === "complete")
+    if (readyStates[aRequest.readyState()] === "complete")
     {
         var status = "HTTP" + aRequest.status();
-
         eventDispatcher.dispatchEvent({ type:status, request:aRequest });
 
         var result = aRequest.success() ? "success" : "failure";
-
         eventDispatcher.dispatchEvent({ type:result, request:aRequest });
+
+        eventDispatcher.dispatchEvent({ type:readyStates[aRequest.readyState()], request:aRequest});
     }
+    else
+        eventDispatcher.dispatchEvent({ type:readyStates[aRequest.readyState()], request:aRequest});
 }
 
 function FileRequest(/*CFURL*/ aURL, onsuccess, onfailure)
@@ -264,7 +294,7 @@ function FileRequest(/*CFURL*/ aURL, onsuccess, onfailure)
     if (aURL.pathExtension() === "plist")
         request.overrideMimeType("text/xml");
 
-    if (FileRequest.async)
+    if (exports.asyncLoader)
     {
         request.onsuccess = Asynchronous(onsuccess);
         request.onfailure = Asynchronous(onfailure);
@@ -275,57 +305,16 @@ function FileRequest(/*CFURL*/ aURL, onsuccess, onfailure)
         request.onfailure = onfailure;
     }
 
-    request.open("GET", aURL.absoluteString(), FileRequest.async);
+    request.open("GET", aURL.absoluteString(), exports.asyncLoader);
     request.send("");
 }
 
 #ifdef BROWSER
-FileRequest.async = YES;
+exports.asyncLoader = YES;
 #else
-FileRequest.async = NO;
+exports.asyncLoader = NO;
 #endif
 
-
-var URLCache = { };
-
-CFHTTPRequest._cacheRequest = function(/*CFURL|String*/ aURL, /*Number*/ status, /*Object*/ headers, /*String*/ body)
-{
-    aURL = typeof aURL === "string" ? aURL : aURL.absoluteString();
-    URLCache[aURL] = new MockXMLHttpRequest(status, headers, body);
-}
-
-CFHTTPRequest._lookupCachedRequest = function(/*CFURL|String*/ aURL)
-{
-    aURL = typeof aURL === "string" ? aURL : aURL.absoluteString();
-    return URLCache[aURL];
-}
-
-function MockXMLHttpRequest(status, headers, body)
-{
-    this.readyState         = CFHTTPRequest.UninitializedState;
-    this.status             = status || 200;
-    this.statusText         = "";
-    this.responseText       = body || "";
-    this._responseHeaders   = headers || {};
-};
-MockXMLHttpRequest.prototype.open = function(method, url, async, user, password)
-{
-    this.readyState = CFHTTPRequest.LoadingState;
-    this.async = async;
-};
-MockXMLHttpRequest.prototype.send = function(body)
-{
-    var self = this;
-    self.responseText = self.responseText.toString();
-    function complete() {
-        for (self.readyState = CFHTTPRequest.LoadedState; self.readyState <= CFHTTPRequest.CompleteState; self.readyState++)
-            self.onreadystatechange();
-    }
-    (self.async ? Asynchronous(complete) : complete)();
-};
-MockXMLHttpRequest.prototype.onreadystatechange       = function() {};
-MockXMLHttpRequest.prototype.abort                    = function() {};
-MockXMLHttpRequest.prototype.setRequestHeader         = function(header, value) {};
-MockXMLHttpRequest.prototype.getAllResponseHeaders    = function() { return this._responseHeaders; };
-MockXMLHttpRequest.prototype.getResponseHeader        = function(header) { return this._responseHeaders[header]; };
-MockXMLHttpRequest.prototype.overrideMimeType         = function(mimetype) {};
+// FIXME: Get rid of these when we no longer need Mock requests in flatten.
+exports.Asynchronous = Asynchronous;
+exports.determineAndDispatchHTTPRequestEvents = determineAndDispatchHTTPRequestEvents;

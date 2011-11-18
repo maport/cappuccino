@@ -46,36 +46,37 @@ var _CPToolbarViewBackgroundColor = nil;
 - (void)tile
 {
     [super tile];
-    
+
     var theWindow = [self window],
         bounds = [self bounds];
-        
+
     [[theWindow contentView] setFrame:CGRectMake(0.0, [self toolbarMaxY], CGRectGetWidth(bounds), CGRectGetHeight(bounds) - [self toolbarMaxY])];
-    
+
     if (![[theWindow toolbar] isVisible])
     {
         [_toolbarBackgroundView removeFromSuperview];
-    
+
         _toolbarBackgroundView = nil;
-    
+
         return;
     }
-    
+
     if (!_toolbarBackgroundView)
     {
         _toolbarBackgroundView = [[CPView alloc] initWithFrame:CGRectMakeZero()];
-    
+
         [_toolbarBackgroundView setBackgroundColor:[[self class] toolbarBackgroundColor]];
         [_toolbarBackgroundView setAutoresizingMask:CPViewWidthSizable];
-    
+
         [self addSubview:_toolbarBackgroundView positioned:CPWindowBelow relativeTo:nil];
     }
-            
-    var frame = CGRectMakeZero();
-    
-    frame.origin = CGPointMakeCopy([self toolbarOffset]);
+
+    var frame = CGRectMakeZero(),
+        toolbarOffset = [self toolbarOffset];
+
+    frame.origin = CGPointMake(toolbarOffset.width, toolbarOffset.height);
     frame.size = [_toolbarView frame].size;
-    
+
     [_toolbarBackgroundView setFrame:frame];
 }
 

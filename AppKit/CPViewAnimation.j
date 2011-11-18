@@ -1,5 +1,5 @@
 /*
- * CPFlashView.j
+ * CPViewAnimation.j
  * AppKit
  *
  * Created by Klaas Pieter Annema on September 3, 2009.
@@ -20,21 +20,52 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-@import <AppKit/CPAnimation.j>
+@import "CPAnimation.j"
 
-CPViewAnimationTargetKey = @"CPViewAnimationTarget";
-CPViewAnimationStartFrameKey = @"CPViewAnimationStartFrame";
-CPViewAnimationEndFrameKey = @"CPViewAnimationEndFrame";
-CPViewAnimationEffectKey = @"CPViewAnimationEffect";
 
-CPViewAnimationFadeInEffect = @"CPViewAnimationFadeIn";
-CPViewAnimationFadeOutEffect = @"CPViewAnimationFadeOut";
+CPViewAnimationTargetKey = @"CPViewAnimationTargetKey";
+CPViewAnimationStartFrameKey = @"CPViewAnimationStartFrameKey";
+CPViewAnimationEndFrameKey = @"CPViewAnimationEndFrameKey";
+CPViewAnimationEffectKey = @"CPViewAnimationEffectKey";
+
+CPViewAnimationFadeInEffect = @"CPViewAnimationFadeInEffect";
+CPViewAnimationFadeOutEffect = @"CPViewAnimationFadeOutEffect";
+
+/*!
+    @class CPViewAnimation
+
+    CPViewAnimation is a subclass of CPAnimation that makes it easy to do
+    basic animations on views.
+*/
 
 @implementation CPViewAnimation : CPAnimation
 {
     CPArray _viewAnimations;
 }
 
+/*!
+    Designated initializer.
+
+    This method takes an array of CPDictionaries. Each dictionary should
+    contain values for the following keys:
+
+    <pre>
+    CPViewAnimationTargetKey - (Required) The view to animate.
+    CPViewAnimationStartFrameKey - (Optional) The start frame of the target.
+    CPViewAnimationEndFrameKey - (Optional) The end frame of the target.
+    CPViewAnimationEffectKey - (Optional) a fade effect to use for the animation.
+    </pre>
+
+    For example:
+    <pre>
+    var animation = [CPDictionary dictionaryWithObjects:[myViewToAnimate, aStartFrame, anEndFrame, CPViewAnimationFadeInEffect]
+                                                forKeys:[CPViewAnimationTargetKey, CPViewAnimationStartFrameKey, CPViewAnimationEndFrameKey, CPViewAnimationEffectKey]];
+    </pre>
+
+    If you pass nil instead of an array of dictionaries you should later call setViewAnimations:.
+
+    @param viewAnimations - An array of CPDictionaries for each animation.
+*/
 - (id)initWithViewAnimations:(CPArray)viewAnimations
 {
     if (self = [super initWithDuration:0.5 animationCurve:CPAnimationLinear])
@@ -60,7 +91,7 @@ CPViewAnimationFadeOutEffect = @"CPViewAnimationFadeOut";
         if (effect === CPViewAnimationFadeInEffect)
         {
             [view setAlphaValue:0.0];
-            [view setHidden:NO];
+            [self _targetView:view setHidden:NO];
         }
         else if (effect === CPViewAnimationFadeOutEffect)
             [view setAlphaValue:1.0];
@@ -69,7 +100,7 @@ CPViewAnimationFadeOutEffect = @"CPViewAnimationFadeOut";
     [super startAnimation];
 }
 
-- (void)setCurrentProgress:(NSAnimationProgress)progress
+- (void)setCurrentProgress:(CPAnimationProgress)progress
 {
     [super setCurrentProgress:progress];
 
@@ -77,33 +108,34 @@ CPViewAnimationFadeOutEffect = @"CPViewAnimationFadeOut";
     while (animationIndex--)
     {
         var dictionary = [_viewAnimations objectAtIndex:animationIndex],
-            view = [self _targetView:dictionary]
-            startFrame = [self _startFrame:dictionary]
-            endFrame = [self _endFrame:dictionary]
-            differenceFrame = CPRectMakeZero();
+            view = [self _targetView:dictionary],
+            startFrame = [self _startFrame:dictionary],
+            endFrame = [self _endFrame:dictionary],
+            differenceFrame = _CGRectMakeZero(),
+            value = [super currentValue];
 
         differenceFrame.origin.x = endFrame.origin.x - startFrame.origin.x;
         differenceFrame.origin.y = endFrame.origin.y - startFrame.origin.y;
         differenceFrame.size.width = endFrame.size.width - startFrame.size.width;
         differenceFrame.size.height = endFrame.size.height - startFrame.size.height;
 
-        var intermediateFrame = CPRectMakeZero();
-        intermediateFrame.origin.x = startFrame.origin.x + differenceFrame.origin.x * progress;
-        intermediateFrame.origin.y = startFrame.origin.y + differenceFrame.origin.y * progress;
-        intermediateFrame.size.width = startFrame.size.width + differenceFrame.size.width * progress;
-        intermediateFrame.size.height = startFrame.size.height + differenceFrame.size.height * progress;
+        var intermediateFrame = _CGRectMakeZero();
+        intermediateFrame.origin.x = startFrame.origin.x + differenceFrame.origin.x * value;
+        intermediateFrame.origin.y = startFrame.origin.y + differenceFrame.origin.y * value;
+        intermediateFrame.size.width = startFrame.size.width + differenceFrame.size.width * value;
+        intermediateFrame.size.height = startFrame.size.height + differenceFrame.size.height * value;
 
         [view setFrame:intermediateFrame];
 
         // Update the view's alpha value
         var effect = [self _effect:dictionary];
         if (effect === CPViewAnimationFadeInEffect)
-            [view setAlphaValue:1.0 * progress];
+            [view setAlphaValue:1.0 * value];
         else if (effect === CPViewAnimationFadeOutEffect)
-            [view setAlphaValue:1.0 + ( 0.0 - 1.0 ) * progress];
+            [view setAlphaValue:1.0 + ( 0.0 - 1.0 ) * value];
 
         if (progress === 1.0)
-            [view setHidden:CPRectIsNull(endFrame) || [view alphaValue] === 0.0];
+            [self _targetView:view setHidden:_CGRectIsNull(endFrame) || [view alphaValue] === 0.0];
     }
 }
 
@@ -124,10 +156,23 @@ CPViewAnimationFadeOutEffect = @"CPViewAnimationFadeOut";
         else if (effect === CPViewAnimationFadeOutEffect)
             [view setAlphaValue:0.0];
 
-        [view setHidden:CPRectIsNull(endFrame) || [view alphaValue] === 0.0];
+        [self _targetView:view setHidden:_CGRectIsNull(endFrame) || [view alphaValue] === 0.0];
     }
 
     [super stopAnimation];
+}
+
+- (void)_targetView:(id)theView setHidden:(BOOL)isHidden
+{
+    if ([theView isKindOfClass:[CPWindow class]])
+    {
+        if (isHidden)
+            [theView orderOut:self];
+        else
+            [theView orderFront:self];
+    }
+    else
+        [theView setHidden:isHidden];
 }
 
 - (id)_targetView:(CPDictionary)dictionary
@@ -139,7 +184,7 @@ CPViewAnimationFadeOutEffect = @"CPViewAnimationFadeOut";
     return targetView;
 }
 
-- (CPRect)_startFrame:(CPDictionary)dictionary
+- (CGRect)_startFrame:(CPDictionary)dictionary
 {
     var startFrame = [dictionary valueForKey:CPViewAnimationStartFrameKey];
     if (!startFrame)
@@ -148,7 +193,7 @@ CPViewAnimationFadeOutEffect = @"CPViewAnimationFadeOut";
     return startFrame;
 }
 
-- (CPRect)_endFrame:(CPDictionary)dictionary
+- (CGRect)_endFrame:(CPDictionary)dictionary
 {
     var endFrame = [dictionary valueForKey:CPViewAnimationEndFrameKey];
     if (!endFrame)
@@ -167,6 +212,11 @@ CPViewAnimationFadeOutEffect = @"CPViewAnimationFadeOut";
     return _viewAnimations;
 }
 
+/*!
+    Takes an array of CPDictionaries as documented in initWithViewAnimations:.
+
+    @param viewAnimations - An array of dictionaries describing the animation.
+*/
 - (void)setViewAnimations:(CPArray)viewAnimations
 {
     if (viewAnimations != _viewAnimations)

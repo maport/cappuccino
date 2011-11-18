@@ -20,11 +20,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "../CoreGraphics/CGGeometry.h"
-
-var DOMSpanElement      = nil,
-    DOMIFrameElement    = nil,
-    DefaultFont         = nil;
+var DOMFixedWidthSpanElement    = nil,
+    DOMFlexibleWidthSpanElement = nil,
+    DOMMetricsDivElement        = nil,
+    DOMMetricsTextSpanElement   = nil,
+    DOMMetricsImgElement        = nil,
+    DOMIFrameElement            = nil,
+    DOMIFrameDocument           = nil,
+    DefaultFont                 = nil;
 
 @implementation CPPlatformString : CPBasePlatformString
 {
@@ -37,25 +40,30 @@ var DOMSpanElement      = nil,
 
 + (void)createDOMElements
 {
+    var style;
+
     DOMIFrameElement = document.createElement("iframe");
     // necessary for Safari caching bug:
     DOMIFrameElement.name = "iframe_" + FLOOR(RAND() * 10000);
-    DOMIFrameElement.style.position = "absolute";
-    DOMIFrameElement.style.left = "-100px";
-    DOMIFrameElement.style.top = "-100px";
-    DOMIFrameElement.style.width = "1px";
-    DOMIFrameElement.style.height = "1px";
-    DOMIFrameElement.style.borderWidth = "0px";
-    DOMIFrameElement.style.overflow = "hidden";
-    DOMIFrameElement.style.zIndex = 100000000000;
     DOMIFrameElement.className = "cpdontremove";
+
+    style = DOMIFrameElement.style;
+    style.position = "absolute";
+    style.left = "-100px";
+    style.top = "-100px";
+    style.width = "1px";
+    style.height = "1px";
+    style.borderWidth = "0px";
+    style.overflow = "hidden";
+    style.zIndex = 100000000000;
 
     var bodyElement = [CPPlatform mainBodyElement];
 
     bodyElement.appendChild(DOMIFrameElement);
 
-    var DOMIFrameDocument = (DOMIFrameElement.contentDocument || DOMIFrameElement.contentWindow.document);
-    DOMIFrameDocument.write("<html><head></head><body></body></html>");
+    DOMIFrameDocument = (DOMIFrameElement.contentDocument || DOMIFrameElement.contentWindow.document);
+    DOMIFrameDocument.write('<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">'+
+                            '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en"><head></head><body></body></html>');
     DOMIFrameDocument.close();
 
     // IE needs this wide <div> to prevent unwanted text wrapping:
@@ -65,18 +73,80 @@ var DOMSpanElement      = nil,
 
     DOMIFrameDocument.body.appendChild(DOMDivElement);
 
-    DOMSpanElement = DOMIFrameDocument.createElement("span");
-    DOMSpanElement.style.position = "absolute";
-    DOMSpanElement.style.visibility = "visible";
-    DOMSpanElement.style.padding = "0px";
-    DOMSpanElement.style.margin = "0px";
+    DOMFlexibleWidthSpanElement = DOMIFrameDocument.createElement("span");
+    style = DOMFlexibleWidthSpanElement.style;
+    style.position = "absolute";
+    style.visibility = "visible";
+    style.padding = "0px";
+    style.margin = "0px";
+    style.whiteSpace = "pre";
 
-    try {
-        DOMSpanElement.style.whiteSpace = "pre";
+    DOMFixedWidthSpanElement = DOMIFrameDocument.createElement("span");
+    style = DOMFixedWidthSpanElement.style;
+    style.display = "block";
+    style.position = "absolute";
+    style.visibility = "visible";
+    style.padding = "0px";
+    style.margin = "0px";
+    style.width = "1px";
+    style.wordWrap = "break-word";
+
+    try
+    {
+        style.whiteSpace = "pre";
+        style.whiteSpace = "-o-pre-wrap";
+        style.whiteSpace = "-pre-wrap";
+        style.whiteSpace = "-moz-pre-wrap";
+        style.whiteSpace = "pre-wrap";
     }
-    catch (e) {}
+    catch(e)
+    {
+        //some versions of IE throw exceptions for unsupported properties.
+        style.whiteSpace = "pre";
+    }
 
-    DOMDivElement.appendChild(DOMSpanElement);
+    DOMDivElement.appendChild(DOMFlexibleWidthSpanElement);
+    DOMDivElement.appendChild(DOMFixedWidthSpanElement);
+}
+
++ (void)createDOMMetricsElements
+{
+    if (!DOMIFrameElement)
+        [self createDOMElements];
+
+    var style;
+
+    DOMMetricsDivElement = DOMIFrameDocument.createElement("div");
+    DOMMetricsDivElement.style.position = "absolute";
+    DOMMetricsDivElement.style.width = "100000px";
+
+    DOMIFrameDocument.body.appendChild(DOMMetricsDivElement);
+
+    DOMMetricsTextSpanElement = DOMIFrameDocument.createElement("span");
+    DOMMetricsTextSpanElement.innerHTML = "x";
+    style = DOMMetricsTextSpanElement.style;
+    style.position = "absolute";
+    style.visibility = "visible";
+    style.padding = "0px";
+    style.margin = "0px";
+    style.whiteSpace = "pre";
+
+    var imgPath = [[CPBundle bundleForClass:[CPView class]] pathForResource:@"empty.png"];
+
+    DOMMetricsImgElement = DOMIFrameDocument.createElement("img");
+    DOMMetricsImgElement.setAttribute("src", imgPath);
+    DOMMetricsImgElement.setAttribute("width", "1");
+    DOMMetricsImgElement.setAttribute("height", "1");
+    DOMMetricsImgElement.setAttribute("alt", "");
+    style = DOMMetricsImgElement.style;
+    style.visibility = "visible";
+    style.padding = "0px";
+    style.margin = "0px";
+    style.border = "none";
+    style.verticalAlign = "baseline";
+
+    DOMMetricsDivElement.appendChild(DOMMetricsTextSpanElement);
+    DOMMetricsDivElement.appendChild(DOMMetricsImgElement);
 }
 
 + (CGSize)sizeOfString:(CPString)aString withFont:(CPFont)aFont forWidth:(float)aWidth
@@ -92,44 +162,46 @@ var DOMSpanElement      = nil,
     if (!DOMIFrameElement)
         [self createDOMElements];
 
-    var style = DOMSpanElement.style;
+    var span;
 
     if (!aWidth)
-    {
-        style.width = "";
-
-        try {
-            style.whiteSpace = "pre";
-        }
-        catch (e) {}
-
-        style.wordWrap = "normal";
-    }
+        span = DOMFlexibleWidthSpanElement;
     else
     {
-        style.width = ROUND(aWidth) + "px";
-        try
-        {
-            style.whiteSpace = "-o-pre-wrap";
-            style.whiteSpace = "-pre-wrap";
-            style.whiteSpace = "-moz-pre-wrap";
-            style.whiteSpace = "pre-wrap";
-        } catch(e)
-        {
-            //some versions of IE throw exceptions for unsupported properties.
-        }
-
-        style.wordWrap = "break-word";
+        span = DOMFixedWidthSpanElement;
+        span.style.width = ROUND(aWidth) + "px";
     }
 
-    style.font = [aFont cssString];
+    span.style.font = [aFont cssString];
 
-    if (CPFeatureIsCompatible(CPJavascriptInnerTextFeature))
-        DOMSpanElement.innerText = aString;
-    else if (CPFeatureIsCompatible(CPJavascriptTextContentFeature))
-        DOMSpanElement.textContent = aString;
+    if (CPFeatureIsCompatible(CPJavaScriptInnerTextFeature))
+        span.innerText = aString;
+    else if (CPFeatureIsCompatible(CPJavaScriptTextContentFeature))
+        span.textContent = aString;
 
-    return _CGSizeMake(DOMSpanElement.clientWidth, DOMSpanElement.clientHeight);
+    return _CGSizeMake(span.clientWidth, span.clientHeight);
+}
+
++ (CPDictionary)metricsOfFont:(CPFont)aFont
+{
+    if (!aFont)
+    {
+        if (!DefaultFont)
+            DefaultFont = [CPFont systemFontOfSize:12.0];
+
+        aFont = DefaultFont;
+    }
+
+    if (!DOMMetricsDivElement)
+        [self createDOMMetricsElements];
+
+    DOMMetricsDivElement.style.font = [aFont cssString];
+
+    var baseline = DOMMetricsImgElement.offsetTop - DOMMetricsTextSpanElement.offsetTop + DOMMetricsImgElement.offsetHeight,
+        descender = baseline - DOMMetricsTextSpanElement.offsetHeight,
+        lineHeight = DOMMetricsTextSpanElement.offsetHeight;
+
+    return [CPDictionary dictionaryWithObjectsAndKeys:baseline, @"ascender", descender, @"descender", lineHeight, @"lineHeight"];
 }
 
 @end

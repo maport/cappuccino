@@ -24,13 +24,12 @@
 @import "CPObject.j"
 @import "CPString.j"
 
+CPInvalidArgumentException          = @"CPInvalidArgumentException";
+CPUnsupportedMethodException        = @"CPUnsupportedMethodException";
+CPRangeException                    = @"CPRangeException";
+CPInternalInconsistencyException    = @"CPInternalInconsistencyException";
 
-CPInvalidArgumentException          = "CPInvalidArgumentException";
-CPUnsupportedMethodException        = "CPUnsupportedMethodException";
-CPRangeException                    = "CPRangeException";
-CPInternalInconsistencyException    = "CPInternalInconsistencyException";
-
-/*! 
+/*!
     @class CPException
     @ingroup foundation
     @brief Used to implement exception handling (creating & raising).
@@ -40,7 +39,7 @@ CPInternalInconsistencyException    = "CPInternalInconsistencyException";
 // some code here...
 if (input == nil)
     [CPException raise:"MyException" reason:"You didn't do something right."];
-    
+
 // code that gets executed if no exception was raised
 </pre>
 */
@@ -54,7 +53,9 @@ if (input == nil)
 */
 + (id)alloc
 {
-    return new Error();
+    var result = new Error();
+    result.isa = [self class];
+    return result;
 }
 
 /*!
@@ -96,7 +97,7 @@ if (input == nil)
         message = aReason;
         _userInfo = aUserInfo;
     }
-    
+
     return self;
 }
 
@@ -140,6 +141,17 @@ if (input == nil)
     throw self;
 }
 
+- (BOOL)isEqual:(id)anObject
+{
+    if (!anObject || !anObject.isa)
+        return NO;
+
+    return [anObject isKindOfClass:CPException] &&
+           name === [anObject name] &&
+           message === [anObject message] &&
+           (_userInfo === [anObject userInfo] || ([_userInfo isEqual:[anObject userInfo]]));
+}
+
 @end
 
 @implementation CPException (CPCopying)
@@ -151,9 +163,9 @@ if (input == nil)
 
 @end
 
-var CPExceptionNameKey = "CPExceptionNameKey",
-    CPExceptionReasonKey = "CPExceptionReasonKey",
-    CPExceptionUserInfoKey = "CPExceptionUserInfoKey";
+var CPExceptionNameKey      = @"CPExceptionNameKey",
+    CPExceptionReasonKey    = @"CPExceptionReasonKey",
+    CPExceptionUserInfoKey  = @"CPExceptionUserInfoKey";
 
 @implementation CPException (CPCoding)
 
@@ -164,15 +176,13 @@ var CPExceptionNameKey = "CPExceptionNameKey",
 */
 - (id)initWithCoder:(CPCoder)aCoder
 {
-    self = [super init];
-    
-    if (self)
+    if (self = [super init])
     {
         name = [aCoder decodeObjectForKey:CPExceptionNameKey];
         message = [aCoder decodeObjectForKey:CPExceptionReasonKey];
         _userInfo = [aCoder decodeObjectForKey:CPExceptionUserInfoKey];
     }
-    
+
     return self;
 }
 
@@ -192,13 +202,28 @@ var CPExceptionNameKey = "CPExceptionNameKey",
 // toll-free bridge Error to CPException
 // [CPException alloc] uses an objj_exception, which is a subclass of Error
 Error.prototype.isa = CPException;
-Error.prototype._userInfo = NULL;
+Error.prototype._userInfo = null;
 
 [CPException initialize];
+
+#define METHOD_CALL_STRING()\
+    ((class_isMetaClass(anObject.isa) ? "+" : "-") + "[" + [anObject className] + " " + aSelector + "]: ")
 
 function _CPRaiseInvalidAbstractInvocation(anObject, aSelector)
 {
     [CPException raise:CPInvalidArgumentException reason:@"*** -" + sel_getName(aSelector) + @" cannot be sent to an abstract object of class " + [anObject className] + @": Create a concrete instance!"];
+}
+
+function _CPRaiseInvalidArgumentException(anObject, aSelector, aMessage)
+{
+    [CPException raise:CPInvalidArgumentException
+                reason:METHOD_CALL_STRING() + aMessage];
+}
+
+function _CPRaiseRangeException(anObject, aSelector, anIndex, aCount)
+{
+    [CPException raise:CPRangeException
+                reason:METHOD_CALL_STRING() + "index (" + anIndex + ") beyond bounds (" + aCount + ")"];
 }
 
 function _CPReportLenientDeprecation(/*Class*/ aClass, /*SEL*/ oldSelector, /*SEL*/ newSelector)

@@ -20,54 +20,64 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+@import <Foundation/CPIndexSet.j>
+
 @import "CPTableColumn.j"
 @import "CPTableView.j"
 @import "CPView.j"
- 
+
+
 @implementation _CPTableColumnHeaderView : CPView
 {
-    _CPImageAndTextView _textField;
+    _CPImageAndTextView     _textField;
+}
+
++ (CPString)defaultThemeClass
+{
+    return @"columnHeader";
+}
+
++ (id)themeAttributes
+{
+    return [CPDictionary dictionaryWithObjects:[[CPNull null], [CPNull null], CGInsetMakeZero(), [CPNull null], [CPNull null], [CPNull null], CGSizeMakeZero()]
+                                       forKeys:[@"background-color", @"text-alignment", @"text-inset", @"text-color", @"text-font", @"text-shadow-color", @"text-shadow-offset"]];
 }
 
 - (void)initWithFrame:(CGRect)frame
 {
     self = [super initWithFrame:frame];
     if (self)
-    {   
         [self _init];
-    }
-    
+
     return self;
 }
 
 - (void)_init
 {
-    _textField = [[_CPImageAndTextView alloc] initWithFrame:CGRectMake(5, 1, CGRectGetWidth([self bounds]) - 10, CGRectGetHeight([self bounds]) - 1)];
-    [_textField setAutoresizingMask:CPViewWidthSizable|CPViewHeightSizable];
-    
+    _textField = [[_CPImageAndTextView alloc] initWithFrame:_CGRectMakeZero()];
+
+    [_textField setAutoresizingMask:CPViewWidthSizable | CPViewHeightSizable];
+
     [_textField setLineBreakMode:CPLineBreakByTruncatingTail];
-    [_textField setTextColor: [CPColor colorWithHexString: @"333333"]];
-    [_textField setFont:[CPFont boldSystemFontOfSize:12.0]];
     [_textField setAlignment:CPLeftTextAlignment];
     [_textField setVerticalAlignment:CPCenterVerticalTextAlignment];
-    [_textField setTextShadowColor:[CPColor whiteColor]];
-    [_textField setTextShadowOffset:CGSizeMake(0,1)];
 
     [self addSubview:_textField];
 }
 
 - (void)layoutSubviews
 {
-    var themeState = [self themeState];
+    [self setBackgroundColor:[self currentValueForThemeAttribute:@"background-color"]];
 
-    if(themeState & CPThemeStateSelected && themeState & CPThemeStateHighlighted)
-        [self setBackgroundColor:[CPColor colorWithPatternImage:CPAppKitImage("tableview-headerview-highlighted-pressed.png", CGSizeMake(1.0, 22.0))]];
-    else if (themeState & CPThemeStateSelected)
-        [self setBackgroundColor:[CPColor colorWithPatternImage:CPAppKitImage("tableview-headerview-highlighted.png", CGSizeMake(1.0, 22.0))]];
-    else if (themeState & CPThemeStateHighlighted)
-        [self setBackgroundColor:[CPColor colorWithPatternImage:CPAppKitImage("tableview-headerview-pressed.png", CGSizeMake(1.0, 22.0))]];
-    else 
-        [self setBackgroundColor:[CPColor colorWithPatternImage:CPAppKitImage("tableview-headerview.png", CGSizeMake(1.0, 22.0))]];
+    var inset = [self currentValueForThemeAttribute:@"text-inset"],
+        bounds = [self bounds];
+
+    [_textField setFrame:_CGRectMake(inset.right, inset.top, bounds.size.width - inset.right - inset.left, bounds.size.height - inset.top - inset.bottom)];
+    [_textField setTextColor:[self currentValueForThemeAttribute:@"text-color"]];
+    [_textField setFont:[self currentValueForThemeAttribute:@"text-font"]];
+    [_textField setTextShadowColor:[self currentValueForThemeAttribute:@"text-shadow-color"]];
+    [_textField setTextShadowOffset:[self currentValueForThemeAttribute:@"text-shadow-offset"]];
+    [_textField setAlignment:[self currentValueForThemeAttribute:@"text-alignment"]];
 }
 
 - (void)setStringValue:(CPString)string
@@ -92,25 +102,20 @@
 
 - (void)setFont:(CPFont)aFont
 {
-    [_textField setFont:aFont];
-}
-
-- (void)setValue:(id)aValue forThemeAttribute:(id)aKey
-{
-    [_textField setValue:aValue forThemeAttribute:aKey];
+    [self setValue:aFont forThemeAttribute:"text-font"];
 }
 
 - (void)_setIndicatorImage:(CPImage)anImage
 {
-	if (anImage)
-	{
-		[_textField setImage:anImage];
-		[_textField setImagePosition:CPImageRight];
-	}
-	else
-	{
-		[_textField setImagePosition:CPNoImage];
-	}
+    if (anImage)
+    {
+        [_textField setImage:anImage];
+        [_textField setImagePosition:CPImageRight];
+    }
+    else
+    {
+        [_textField setImagePosition:CPNoImage];
+    }
 }
 
 @end
@@ -137,7 +142,7 @@ var _CPTableColumnHeaderViewStringValueKey = @"_CPTableColumnHeaderViewStringVal
 - (void)encodeWithCoder:(CPCoder)aCoder
 {
     [super encodeWithCoder:aCoder];
-    
+
     [aCoder encodeObject:[_textField text] forKey:_CPTableColumnHeaderViewStringValueKey];
     [aCoder encodeObject:[_textField image] forKey:_CPTableColumnHeaderViewImageKey];
     [aCoder encodeObject:[_textField font] forKey:_CPTableColumnHeaderViewFontKey];
@@ -147,27 +152,47 @@ var _CPTableColumnHeaderViewStringValueKey = @"_CPTableColumnHeaderViewStringVal
 
 @implementation CPTableHeaderView : CPView
 {
-    int _resizedColumn @accessors(readonly, property=resizedColumn);
-    int _draggedColumn @accessors(readonly, property=draggedColumn);
-    int _pressedColumn @accessors(readonly, property=pressedColumn);
-    
-    float _draggedDistance @accessors(readonly, property=draggedDistance);
-    float _lastLocation;
-    float _columnOldWidth;
-    
-    CPTableView _tableView @accessors(property=tableView);
+    CGPoint                 _mouseDownLocation;
+    CGPoint                 _previousTrackingLocation;
+    int                     _activeColumn;
+    int                     _pressedColumn;
+
+    BOOL                    _isResizing;
+    BOOL                    _isDragging;
+    BOOL                    _isTrackingColumn;
+    BOOL                    _drawsColumnLines;
+
+    float                   _columnOldWidth;
+
+    CPTableView             _tableView @accessors(property=tableView);
+}
+
++ (CPString)defaultThemeClass
+{
+    return @"tableHeaderRow";
+}
+
++ (id)themeAttributes
+{
+    return [CPDictionary dictionaryWithObjects:[[CPNull null], [CPColor grayColor]]
+                                       forKeys:[@"background-color", @"divider-color"]];
 }
 
 - (void)_init
 {
-    _resizedColumn = -1;
-    _draggedColumn = -1;
+    _mouseDownLocation = _CGPointMakeZero();
+    _previousTrackingLocation = _CGPointMakeZero();
+    _activeColumn = -1;
     _pressedColumn = -1;
-    _draggedDistance = 0.0;
-    _lastLocation = nil;
-    _columnOldWidth = nil;
 
-    [self setBackgroundColor:[CPColor colorWithPatternImage:CPAppKitImage("tableview-headerview.png", CGSizeMake(1.0, 22.0))]];
+    _isResizing = NO;
+    _isDragging = NO;
+    _isTrackingColumn = NO;
+    _drawsColumnLines = YES;
+
+    _columnOldWidth = 0.0;
+
+    [self setBackgroundColor:[self currentValueForThemeAttribute:@"background-color"]];
 }
 
 - (id)initWithFrame:(CGRect)aFrame
@@ -182,39 +207,41 @@ var _CPTableColumnHeaderViewStringValueKey = @"_CPTableColumnHeaderViewStringVal
 
 - (int)columnAtPoint:(CGPoint)aPoint
 {
-    return [_tableView columnAtPoint:CGPointMake(aPoint.x, 0)];
+    return [_tableView columnAtPoint:CGPointMake(aPoint.x, aPoint.y)];
 }
 
 - (CGRect)headerRectOfColumn:(int)aColumnIndex
 {
-    var tableColumns = [_tableView tableColumns];
+    var headerRect = CGRectMakeCopy([self bounds]),
+        columnRect = [_tableView rectOfColumn:aColumnIndex];
 
-    if (aColumnIndex < 0 || aColumnIndex > [tableColumns count])
-        [CPException raise:"invalid" reason:"tried to get headerRectOfColumn: on invalid column"];
+    headerRect.origin.x = _CGRectGetMinX(columnRect);
+    headerRect.size.width = _CGRectGetWidth(columnRect);
 
-    // UPDATE COLUMN RANGES ?
-        
-    var tableRange = _tableView._tableColumnRanges[aColumnIndex],
-        bounds = [self bounds];
+    return headerRect;
+}
 
-    var rMinX = ROUND(tableRange.location);
-    bounds.origin.x = rMinX;
-    bounds.size.width = FLOOR(tableRange.length + tableRange.location - rMinX);
-    
-    return bounds;
+- (void)setDrawsColumnLines:(BOOL)aFlag
+{
+    _drawsColumnLines = aFlag;
+}
+
+- (BOOL)drawsColumnLines
+{
+    return _drawsColumnLines;
 }
 
 - (CGRect)_cursorRectForColumn:(int)column
 {
     if (column == -1 || !([_tableView._tableColumns[column] resizingMask] & CPTableColumnUserResizingMask))
-        return CGRectMakeZero();
+        return _CGRectMakeZero();
 
     var rect = [self headerRectOfColumn:column];
 
-    rect.origin.x = CGRectGetMaxX(rect) - 5;
+    rect.origin.x = _CGRectGetMaxX(rect) - 5;
     rect.size.width = 20;
 
-    return rect;    
+    return rect;
 }
 
 - (void)_setPressedColumn:(CPInteger)column
@@ -223,117 +250,293 @@ var _CPTableColumnHeaderViewStringValueKey = @"_CPTableColumnHeaderViewStringVal
     {
         var headerView = [_tableView._tableColumns[_pressedColumn] headerView];
         [headerView unsetThemeState:CPThemeStateHighlighted];
-    }    
-    
+    }
+
     if (column != -1)
     {
         var headerView = [_tableView._tableColumns[column] headerView];
         [headerView setThemeState:CPThemeStateHighlighted];
     }
-    
+
     _pressedColumn = column;
 }
 
 - (void)mouseDown:(CPEvent)theEvent
 {
-    var mouseLocation = [self convertPoint:[theEvent locationInWindow] fromView:nil],
-        clickedColumn = [self columnAtPoint:mouseLocation];    
-    
-    // should we send column -1 ?
-    [_tableView _sendDelegateDidMouseDownInHeader:clickedColumn];
-    
-    var resizeLocation = CGPointMake(mouseLocation.x - 5, mouseLocation.y),
-        resizedColumn = [self columnAtPoint:resizeLocation];
-    
-    if (resizedColumn == -1)
-        return;
-
-    // 2 different tracking methods: one for resizing/stop-resizing, another one for selection/reordering
-    if ([_tableView allowsColumnResizing]
-        && CGRectContainsPoint([self _cursorRectForColumn:resizedColumn], mouseLocation))
-    {
-        _resizedColumn = resizedColumn;
-        [_tableView._tableColumns[_resizedColumn] setDisableResizingPosting:YES];
-        [_tableView setDisableAutomaticResizing:YES];
-        [self trackResizeWithEvent:theEvent];
-    }
-    else
-    {
-        [self _setPressedColumn:clickedColumn];
-        [self trackMouseWithEvent:theEvent];
-    }    
+    [self trackMouse:theEvent];
 }
 
-- (void)trackMouseWithEvent:(CPEvent)theEvent
+- (void)trackMouse:(CPEvent)theEvent
 {
-    var type = [theEvent type];
-    
-    if (type == CPLeftMouseUp)
-    {
-        var location = [self convertPoint:[theEvent locationInWindow] fromView:nil],
-            clickedColumn = [self columnAtPoint:location];
+    var type = [theEvent type],
+        currentLocation = [self convertPoint:[theEvent locationInWindow] fromView:nil];
 
-        [self _setPressedColumn:-1];
-        
-        if (clickedColumn != -1)
-            [_tableView _didClickTableColumn:clickedColumn modifierFlags:[theEvent modifierFlags]];
-        
-        return;
-    }
+    // Take the right columns resize tracking area into account
+    currentLocation.x -= 5.0;
 
-    [CPApp setTarget:self selector:@selector(trackMouseWithEvent:) forNextEventMatchingMask:CPLeftMouseDraggedMask | CPLeftMouseUpMask | CPLeftMouseDownMask untilDate:nil inMode:nil dequeue:YES];
-}
-
-- (void)trackResizeWithEvent:(CPEvent)anEvent
-{
-    var location = [self convertPoint:[anEvent locationInWindow] fromView:nil],
-        tableColumn = [[_tableView tableColumns] objectAtIndex:_resizedColumn],
-        type = [anEvent type];
-
-    if (_lastLocation == nil)
-        _lastLocation = location;
-
-    if (_columnOldWidth == nil)
-        _columnOldWidth = [tableColumn width];
+    var columnIndex = [self columnAtPoint:currentLocation],
+        shouldResize = [self shouldResizeTableColumn:columnIndex at:_CGPointMake(currentLocation.x + 5.0, currentLocation.y)];
 
     if (type === CPLeftMouseUp)
-    {   
-        [self _updateResizeCursor:anEvent];
-                
-        [tableColumn _postDidResizeNotificationWithOldWidth:_columnOldWidth];
-        [tableColumn setDisableResizingPosting:NO];        
-        [_tableView setDisableAutomaticResizing:NO];
-
-        _resizedColumn = -1;
-        _lastLocation = nil;
-        _columnOldWidth = nil;
-
-        return;
-    }            
-    else if (type === CPLeftMouseDragged)
     {
-        var newWidth = [tableColumn width] + location.x - _lastLocation.x;
-        
-        if (newWidth < [tableColumn minWidth])
-            [[CPCursor resizeRightCursor] set];
-        else if (newWidth > [tableColumn maxWidth])
-            [[CPCursor resizeLeftCursor] set];
+        if (shouldResize)
+            [self stopResizingTableColumn:_activeColumn at:currentLocation];
+        else if ([self _shouldStopTrackingTableColumn:columnIndex at:currentLocation])
+        {
+            [_tableView _didClickTableColumn:columnIndex modifierFlags:[theEvent modifierFlags]];
+            [self stopTrackingTableColumn:columnIndex at:currentLocation];
+
+            _isTrackingColumn = NO;
+        }
+
+        [self _updateResizeCursor:[CPApp currentEvent]];
+
+        _activeColumn = CPNotFound;
+        return;
+    }
+
+    if (type === CPLeftMouseDown)
+    {
+        if (columnIndex === -1)
+            return;
+
+        _mouseDownLocation = currentLocation;
+        _activeColumn = columnIndex;
+
+        [_tableView _sendDelegateDidMouseDownInHeader:columnIndex];
+
+        if (shouldResize)
+            [self startResizingTableColumn:columnIndex at:currentLocation];
         else
         {
-            _tableView._lastColumnShouldSnap = NO;
-            [tableColumn setWidth:newWidth];
-            // FIXME: there has to be a better way to do this...
-            // We should refactor the auto resizing crap.
-            // We need to figure out the exact cocoa behavior here though. 
-            _lastLocation = location;
+            [self startTrackingTableColumn:columnIndex at:currentLocation];
+            _isTrackingColumn = YES;
+        }
+    }
+    else if (type === CPLeftMouseDragged)
+    {
+        if (shouldResize)
+            [self continueResizingTableColumn:_activeColumn at:currentLocation];
+        else
+        {
+            if (_activeColumn === columnIndex && _CGRectContainsPoint([self headerRectOfColumn:columnIndex], currentLocation))
+            {
+                if (_isTrackingColumn && _pressedColumn !== -1)
+                {
+                    if (![self continueTrackingTableColumn:columnIndex at:currentLocation])
+                        return; // Stop tracking the column, because it's being dragged
+                } else
+                    [self startTrackingTableColumn:columnIndex at:currentLocation];
 
-            [[CPCursor resizeLeftRightCursor] set];
-            [self setNeedsLayout];
-            [self setNeedsDisplay:YES];
+            } else if (_isTrackingColumn && _pressedColumn !== -1)
+                [self stopTrackingTableColumn:_activeColumn at:currentLocation];
         }
     }
 
-    [CPApp setTarget:self selector:@selector(trackResizeWithEvent:) forNextEventMatchingMask:CPLeftMouseDraggedMask | CPLeftMouseUpMask untilDate:nil inMode:nil dequeue:YES];
+    _previousTrackingLocation = currentLocation;
+    [CPApp setTarget:self selector:@selector(trackMouse:) forNextEventMatchingMask:CPLeftMouseDraggedMask | CPLeftMouseUpMask untilDate:nil inMode:nil dequeue:YES];
+}
+
+- (void)startTrackingTableColumn:(int)aColumnIndex at:(CGPoint)aPoint
+{
+    [self _setPressedColumn:aColumnIndex];
+}
+
+- (BOOL)continueTrackingTableColumn:(int)aColumnIndex at:(CGPoint)aPoint
+{
+    if ([self _shouldDragTableColumn:aColumnIndex at:aPoint])
+    {
+        var columnRect = [self headerRectOfColumn:aColumnIndex],
+            offset = _CGPointMakeZero(),
+            view = [_tableView _dragViewForColumn:aColumnIndex event:[CPApp currentEvent] offset:offset],
+            viewLocation = _CGPointMakeZero();
+
+        viewLocation.x = ( _CGRectGetMinX(columnRect) + offset.x ) + ( aPoint.x - _mouseDownLocation.x );
+        viewLocation.y = _CGRectGetMinY(columnRect) + offset.y;
+
+        [self dragView:view at:viewLocation offset:_CGSizeMakeZero() event:[CPApp currentEvent]
+            pasteboard:[CPPasteboard pasteboardWithName:CPDragPboard] source:self slideBack:YES];
+
+        return NO;
+    }
+
+    return YES;
+}
+
+- (BOOL)_shouldStopTrackingTableColumn:(int)aColumnIndex at:(CGPoint)aPoint
+{
+    return _isTrackingColumn && _activeColumn === aColumnIndex &&
+        _CGRectContainsPoint([self headerRectOfColumn:aColumnIndex], aPoint);
+}
+
+- (void)stopTrackingTableColumn:(int)aColumnIndex at:(CGPoint)aPoint
+{
+    [self _setPressedColumn:CPNotFound];
+    [self _updateResizeCursor:[CPApp currentEvent]];
+}
+
+- (BOOL)_shouldDragTableColumn:(int)aColumnIndex at:(CGPoint)aPoint
+{
+    return [_tableView allowsColumnReordering] && ABS(aPoint.x - _mouseDownLocation.x) >= 10.0;
+}
+
+- (CGRect)_headerRectOfLastVisibleColumn
+{
+    var tableColumns = [_tableView tableColumns],
+        columnIndex = [tableColumns count];
+
+    while (columnIndex--)
+    {
+        var tableColumn = [tableColumns objectAtIndex:columnIndex];
+
+        if (![tableColumn isHidden])
+            return [self headerRectOfColumn:columnIndex];
+    }
+
+    return nil;
+}
+
+- (void)_constrainDragView:(CPView)theDragView at:(CGPoint)aPoint
+{
+    var tableColumns = [_tableView tableColumns],
+        lastColumnRect = [self _headerRectOfLastVisibleColumn],
+        activeColumnRect = [self headerRectOfColumn:_activeColumn],
+        dragWindow = [theDragView window],
+        frame = [dragWindow frame];
+
+    // Convert the frame origin from the global coordinate system to the windows' coordinate system
+    frame.origin = [[self window] convertGlobalToBase:frame.origin];
+    // the from the window to the view
+    frame.origin = [self convertPoint:frame.origin fromView:nil];
+
+    // This effectively clamps the value between the minimum and maximum
+    frame.origin.x = MAX(0.0, MIN(_CGRectGetMinX(frame), _CGRectGetMaxX(lastColumnRect) - _CGRectGetWidth(activeColumnRect)));
+
+    // Make sure the column cannot move vertically
+    frame.origin.y = _CGRectGetMinY(lastColumnRect);
+
+    // Convert the calculated origin back to the window coordinate system
+    frame.origin = [self convertPoint:frame.origin toView:nil];
+    // Then back to the global coordinate system
+    frame.origin = [[self window] convertBaseToGlobal:frame.origin];
+
+    [dragWindow setFrame:frame];
+}
+
+- (void)_moveColumn:(int)aFromIndex toColumn:(int)aToIndex
+{
+    [_tableView moveColumn:aFromIndex toColumn:aToIndex];
+    _activeColumn = aToIndex;
+    _pressedColumn = _activeColumn;
+}
+
+- (void)draggedView:(CPView)aView beganAt:(CGPoint)aPoint
+{
+    _isDragging = YES;
+
+    var column = [[_tableView tableColumns] objectAtIndex:_activeColumn];
+
+    [[column headerView] setHidden:YES];
+    [_tableView _setDraggedColumn:column];
+
+    [self setNeedsDisplay:YES];
+}
+
+- (void)draggedView:(CPView)aView movedTo:(CGPoint)aPoint
+{
+    [self _constrainDragView:aView at:aPoint];
+
+    var dragWindow = [aView window],
+        dragWindowFrame = [dragWindow frame];
+
+    var hoverPoint = CGPointCreateCopy(aPoint);
+
+    if (aPoint.x < _previousTrackingLocation.x)
+        hoverPoint = _CGPointMake(_CGRectGetMinX(dragWindowFrame), _CGRectGetMinY(dragWindowFrame));
+    else if (aPoint.x > _previousTrackingLocation.x)
+        hoverPoint = _CGPointMake(_CGRectGetMaxX(dragWindowFrame), _CGRectGetMinY(dragWindowFrame));
+
+    // Convert the hover point from the global coordinate system to windows' coordinate system
+    hoverPoint = [[self window] convertGlobalToBase:hoverPoint];
+    // then to the view
+    hoverPoint = [self convertPoint:hoverPoint fromView:nil];
+
+    var hoveredColumn = [self columnAtPoint:hoverPoint];
+
+    if (hoveredColumn !== -1)
+    {
+        var columnRect = [self headerRectOfColumn:hoveredColumn],
+            columnCenterPoint = [self convertPoint:CGPointMake(_CGRectGetMidX(columnRect), _CGRectGetMidY(columnRect)) fromView:self];
+        if (hoveredColumn < _activeColumn && hoverPoint.x < columnCenterPoint.x)
+            [self _moveColumn:_activeColumn toColumn:hoveredColumn];
+        else if (hoveredColumn > _activeColumn && hoverPoint.x > columnCenterPoint.x)
+            [self _moveColumn:_activeColumn toColumn:hoveredColumn];
+    }
+
+    _previousTrackingLocation = aPoint;
+}
+
+- (void)draggedView:(CPImage)aView endedAt:(CGPoint)aLocation operation:(CPDragOperation)anOperation
+{
+    _isDragging = NO;
+    _isTrackingColumn = NO; // We need to do this explicitly because the mouse up section of trackMouse is never reached
+
+    [_tableView _setDraggedColumn:nil];
+    [[[[_tableView tableColumns] objectAtIndex:_activeColumn] headerView] setHidden:NO];
+    [self stopTrackingTableColumn:_activeColumn at:aLocation];
+
+    [self setNeedsDisplay:YES];
+}
+
+- (BOOL)shouldResizeTableColumn:(int)aColumnIndex at:(CGPoint)aPoint
+{
+    if (_isResizing)
+        return YES;
+
+    if (_isTrackingColumn)
+        return NO;
+
+    return [_tableView allowsColumnResizing] && _CGRectContainsPoint([self _cursorRectForColumn:aColumnIndex], aPoint);
+}
+
+- (void)startResizingTableColumn:(int)aColumnIndex at:(CGPoint)aPoint
+{
+    _isResizing = YES;
+
+    var tableColumn = [[_tableView tableColumns] objectAtIndex:aColumnIndex];
+
+    [tableColumn setDisableResizingPosting:YES];
+    [_tableView setDisableAutomaticResizing:YES];
+}
+
+- (void)continueResizingTableColumn:(int)aColumnIndex at:(CGPoint)aPoint
+{
+    var tableColumn = [[_tableView tableColumns] objectAtIndex:aColumnIndex],
+        newWidth = [tableColumn width] + aPoint.x - _previousTrackingLocation.x;
+
+    if (newWidth < [tableColumn minWidth])
+        [[CPCursor resizeRightCursor] set];
+    else if (newWidth > [tableColumn maxWidth])
+        [[CPCursor resizeLeftCursor] set];
+    else
+    {
+        _tableView._lastColumnShouldSnap = NO;
+        [tableColumn setWidth:newWidth];
+
+        [[CPCursor resizeLeftRightCursor] set];
+        [self setNeedsLayout];
+        [self setNeedsDisplay:YES];
+    }
+}
+
+- (void)stopResizingTableColumn:(int)aColumnIndex at:(CGPoint)aPoint
+{
+    var tableColumn = [[_tableView tableColumns] objectAtIndex:aColumnIndex];
+    [tableColumn _postDidResizeNotificationWithOldWidth:_columnOldWidth];
+    [tableColumn setDisableResizingPosting:NO];
+    [_tableView setDisableAutomaticResizing:NO];
+
+    _isResizing = NO;
 }
 
 - (void)_updateResizeCursor:(CPEvent)theEvent
@@ -345,15 +548,15 @@ var _CPTableColumnHeaderViewStringValueKey = @"_CPTableColumnHeaderViewStringVal
         return;
     }
 
-    var mouseLocation = [self convertPoint:[theEvent locationInWindow] fromView:nil],    
+    var mouseLocation = [self convertPoint:[theEvent locationInWindow] fromView:nil],
         mouseOverLocation = CGPointMake(mouseLocation.x - 5, mouseLocation.y),
         overColumn = [self columnAtPoint:mouseOverLocation];
-    
-    if (overColumn >= 0 && CGRectContainsPoint([self _cursorRectForColumn:overColumn], mouseLocation))
+
+    if (overColumn >= 0 && _CGRectContainsPoint([self _cursorRectForColumn:overColumn], mouseLocation))
     {
         var tableColumn = [[_tableView tableColumns] objectAtIndex:overColumn],
             width = [tableColumn width];
-            
+
         if (width == [tableColumn minWidth])
             [[CPCursor resizeRightCursor] set];
         else if (width == [tableColumn maxWidth])
@@ -365,14 +568,8 @@ var _CPTableColumnHeaderViewStringValueKey = @"_CPTableColumnHeaderViewStringVal
         [[CPCursor arrowCursor] set];
 }
 
-- (void)viewDidMoveToWindow
-{
-    //if ([_tableView allowsColumnResizing])
-    //    [[self window] setAcceptsMouseMovedEvents:YES];
-}
-
 - (void)mouseEntered:(CPEvent)theEvent
-{   
+{
     [self _updateResizeCursor:theEvent];
 }
 
@@ -390,31 +587,33 @@ var _CPTableColumnHeaderViewStringValueKey = @"_CPTableColumnHeaderViewStringVal
 - (void)layoutSubviews
 {
     var tableColumns = [_tableView tableColumns],
-        count = [tableColumns count];    
-    
-    for (var i = 0; i < count; i++) 
+        count = [tableColumns count];
+
+    for (var i = 0; i < count; i++)
     {
         var column = [tableColumns objectAtIndex:i],
-            headerView = [column headerView];
-        
-        var frame = [self headerRectOfColumn:i];
+            headerView = [column headerView],
+            frame = [self headerRectOfColumn:i];
+
+        // Make space for the gridline on the right.
+        frame.origin.x -= 0.5;
+        frame.size.width -= 1.0;
         frame.size.height -= 0.5;
-        if (i > 0) 
-        {
-            frame.origin.x += 0.5;
-            frame.size.width -= 1;
-        }
-        
+        // Note: we're not adding in intercell spacing here. This setting only affects the regular
+        // table cell data views, not the header. Verified in Cocoa on March 29th, 2011.
+
         [headerView setFrame:frame];
-        
-        if([headerView superview] != self)
+
+        if ([headerView superview] != self)
             [self addSubview:headerView];
     }
+
+    [self setBackgroundColor:[self currentValueForThemeAttribute:@"background-color"]];
 }
 
 - (void)drawRect:(CGRect)aRect
 {
-    if (!_tableView)
+    if (!_tableView || ![self drawsColumnLines])
         return;
 
     var context = [[CPGraphicsContext currentContext] graphicsPort],
@@ -426,55 +625,40 @@ var _CPTableColumnHeaderViewStringValueKey = @"_CPTableColumnHeaderViewStringVal
         exposedRange = CPMakeRange(firstIndex, [exposedTableColumns lastIndex] - firstIndex + 1);
 
     CGContextSetLineWidth(context, 1);
-    CGContextSetStrokeColor(context, [_tableView gridColor]);
+    CGContextSetStrokeColor(context, [self currentValueForThemeAttribute:@"divider-color"]);
 
     [exposedColumnIndexes getIndexes:columnsArray maxCount:-1 inIndexRange:exposedRange];
 
     var columnArrayIndex = 0,
         columnArrayCount = columnsArray.length,
         columnMaxX;
-        
+
     CGContextBeginPath(context);
-    for(; columnArrayIndex < columnArrayCount; columnArrayIndex++)
+    for (; columnArrayIndex < columnArrayCount; columnArrayIndex++)
     {
         // grab each column rect and add vertical lines
         var columnIndex = columnsArray[columnArrayIndex],
             columnToStroke = [self headerRectOfColumn:columnIndex];
-            
-        columnMaxX = CGRectGetMaxX(columnToStroke);
-        
-        CGContextMoveToPoint(context, ROUND(columnMaxX) + 0.5, ROUND(CGRectGetMinY(columnToStroke)));
-        CGContextAddLineToPoint(context, ROUND(columnMaxX) + 0.5, ROUND(CGRectGetMaxY(columnToStroke)));
+
+        columnMaxX = _CGRectGetMaxX(columnToStroke);
+
+        CGContextMoveToPoint(context, FLOOR(columnMaxX) - 0.5, ROUND(_CGRectGetMinY(columnToStroke)));
+        CGContextAddLineToPoint(context, FLOOR(columnMaxX) - 0.5, ROUND(_CGRectGetMaxY(columnToStroke)));
     }
-    
     CGContextClosePath(context);
     CGContextStrokePath(context);
-        
-/*
-    var maxY = CGRectGetMaxY([self bounds]);
-    // draw normal gradient for remaining space
-    if (supportsCanvasGradient)
+
+    /*if (_isDragging)
     {
-        aRect.origin.x = columnMaxX - 0.5;
-        aRect.size.width -= columnMaxX;
-        CGContextBeginPath(context);
-        CGContextAddRect(context, CGRectMake(columnMaxX + 1, 0, CGRectGetMaxX([self bounds]) - columnMaxX, CGRectGetHeight([self bounds])));
-        CGContextClosePath(context);    
-        CGContextDrawLinearGradient(context, [_CPTableColumnHeaderView headerGradient], CGPointMake(0,0), CGPointMake(0, maxY - 1),0);
-    }   
-   
-    // Draw bottom line
-    CGContextBeginPath(context);    
-    CGContextMoveToPoint(context, 0, maxY - 0.5);
-    CGContextAddLineToPoint(context, CGRectGetMaxX([self bounds]), maxY - 0.5);
-    CGContextClosePath(context);
-    CGContextStrokePath(context);
-*/   
+        CGContextSetFillColor(context, [CPColor grayColor]);
+        CGContextFillRect(context, [self headerRectOfColumn:_activeColumn])
+    }*/
 }
 
 @end
 
-var CPTableHeaderViewTableViewKey = @"CPTableHeaderViewTableViewKey";
+var CPTableHeaderViewTableViewKey = @"CPTableHeaderViewTableViewKey",
+    CPTableHeaderViewDrawsColumnLines = @"CPTableHeaderViewDrawsColumnLines";
 
 @implementation CPTableHeaderView (CPCoding)
 
@@ -484,6 +668,15 @@ var CPTableHeaderViewTableViewKey = @"CPTableHeaderViewTableViewKey";
     {
         [self _init];
         _tableView = [aCoder decodeObjectForKey:CPTableHeaderViewTableViewKey];
+
+        // FIX ME: Take this out before 1.0
+        if ([aCoder containsValueForKey:CPTableHeaderViewDrawsColumnLines])
+            _drawsColumnLines = [aCoder decodeBoolForKey:CPTableHeaderViewDrawsColumnLines];
+        else
+        {
+            _drawsColumnLines = YES;
+            CPLog.warn("The tableview header being decoded is using an old cib. Please run Nib2Cib.");
+        }
     }
 
     return self;
@@ -493,7 +686,7 @@ var CPTableHeaderViewTableViewKey = @"CPTableHeaderViewTableViewKey";
 {
     [super encodeWithCoder:aCoder];
     [aCoder encodeObject:_tableView forKey:CPTableHeaderViewTableViewKey];
+    [aCoder encodeBool:_drawsColumnLines forKey:CPTableHeaderViewDrawsColumnLines];
 }
 
 @end
-

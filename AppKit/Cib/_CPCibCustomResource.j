@@ -46,28 +46,28 @@ var _CPCibCustomResourceClassNameKey    = @"_CPCibCustomResourceClassNameKey",
 - (id)initWithClassName:(CPString)aClassName resourceName:(CPString)aResourceName properties:(CPDictionary)properties
 {
     self = [super init];
-    
+
     if (self)
     {
         _className = aClassName;
         _resourceName = aResourceName;
         _properties = properties;
     }
-    
+
     return self;
 }
 
 - (id)initWithCoder:(CPCoder)aCoder
 {
     self = [super init];
-    
+
     if (self)
     {
         _className = [aCoder decodeObjectForKey:_CPCibCustomResourceClassNameKey];
         _resourceName = [aCoder decodeObjectForKey:_CPCibCustomResourceResourceNameKey];
         _properties = [aCoder decodeObjectForKey:_CPCibCustomResourcePropertiesKey];
     }
-    
+
     return self;
 }
 
@@ -80,10 +80,17 @@ var _CPCibCustomResourceClassNameKey    = @"_CPCibCustomResourceClassNameKey",
 
 - (id)awakeAfterUsingCoder:(CPCoder)aCoder
 {
-    if ([aCoder respondsToSelector:@selector(bundle)] && 
+    if ([aCoder respondsToSelector:@selector(bundle)] &&
         (![aCoder respondsToSelector:@selector(awakenCustomResources)] || [aCoder awakenCustomResources]))
         if (_className === @"CPImage")
+        {
+            if (_resourceName == "CPAddTemplate")
+                return [[CPImage alloc] initWithContentsOfFile:[[CPBundle bundleForClass:[CPButtonBar class]] pathForResource:@"plus_button.png"] size:CGSizeMake(11, 12)];
+            else if (_resourceName == "CPRemoveTemplate")
+                return [[CPImage alloc] initWithContentsOfFile:[[CPBundle bundleForClass:[CPButtonBar class]] pathForResource:@"minus_button.png"] size:CGSizeMake(11, 4)];
+
             return [[CPImage alloc] initWithContentsOfFile:[[aCoder bundle] pathForResource:_resourceName] size:_properties.valueForKey(@"size")];
+        }
 
     return self;
 }
@@ -110,6 +117,16 @@ var _CPCibCustomResourceClassNameKey    = @"_CPCibCustomResourceClassNameKey",
 - (BOOL)isNinePartImage
 {
     return NO;
+}
+
+- (unsigned)loadStatus
+{
+    return CPImageLoadStatusCompleted;
+}
+
+- (id)delegate
+{
+    return nil;
 }
 
 @end

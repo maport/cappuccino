@@ -20,28 +20,26 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-@import "CPObject.j"
 @import "CPException.j"
+@import "CPObject.j"
 
-
-/*! 
+/*!
     @class CPCoder
     @ingroup foundation
     @brief Defines methods for use when archiving & restoring (enc/decoding).
 
-    Top-level class defining methods for use when archiving (encoding) objects to a byte array 
-    or file, and when restoring (decoding) objects. 
+    Top-level class defining methods for use when archiving (encoding) objects to a byte array
+    or file, and when restoring (decoding) objects.
 */
 @implementation CPCoder : CPObject
 {
-
 }
 
 /*!
     Returns a flag indicating whether the receiver supports keyed coding. The default implementation returns
     \c NO. Subclasses supporting keyed coding must override this to return \c YES.
 */
--(BOOL)allowsKeyedCoding
+- (BOOL)allowsKeyedCoding
 {
    return NO;
 }
@@ -53,25 +51,25 @@
     @param aType the structure or object type
     @param anObject the object to be encoded
 */
--(void)encodeValueOfObjCType:(CPString)aType at:(id)anObject
+- (void)encodeValueOfObjCType:(CPString)aType at:(id)anObject
 {
-   CPInvalidAbstractInvocation();
+   _CPRaiseInvalidAbstractInvocation(self, _cmd);
 }
 
 /*!
     Encodes a data object. Subclasses must override this method.
     @param aData the object to be encoded.
 */
--(void)encodeDataObject:(CPData)aData
+- (void)encodeDataObject:(CPData)aData
 {
-   CPInvalidAbstractInvocation();
+   _CPRaiseInvalidAbstractInvocation(self, _cmd);
 }
 
 /*!
     Encodes an object. Subclasses must override this method.
     @param anObject the object to be encoded
 */
--(void)encodeObject:(id)anObject
+- (void)encodeObject:(id)anObject
 {
 //   [self encodeValueOfObjCType:@encode(id) at:object];
 }
@@ -110,7 +108,7 @@
     Encodes a property list. Not yet implemented.
     @param aPropertyList the property list to be encoded
 */
--(void)encodePropertyList:(id)aPropertyList
+- (void)encodePropertyList:(id)aPropertyList
 {
 //   [self encodeValueOfObjCType:@encode(id) at:&propertyList];
 }
@@ -119,7 +117,7 @@
     Encodes the root object of a group of Obj-J objects.
     @param rootObject the root object to be encoded.
 */
--(void)encodeRootObject:(id)anObject
+- (void)encodeRootObject:(id)anObject
 {
    [self encodeObject:anObject];
 }
@@ -128,18 +126,18 @@
     Encodes an object.
     @param anObject the object to be encoded.
 */
--(void)encodeBycopyObject:(id)anObject
+- (void)encodeBycopyObject:(id)anObject
 {
-   [self encodeObject:object];
+   [self encodeObject:anObject];
 }
 
 /*!
     Encodes an object.
     @param anObject the object to be encoded.
 */
--(void)encodeConditionalObject:(id)anObject
+- (void)encodeConditionalObject:(id)anObject
 {
-   [self encodeObject:object];
+   [self encodeObject:anObject];
 }
 
 @end
@@ -148,7 +146,7 @@
 
 /*!
     Called after an object is unarchived in case a different object should be used in place of it.
-    The defaut method returns \c self. Interested subclasses should override this.
+    The default method returns \c self. Interested subclasses should override this.
     @param aDecoder
     @return the original object or it's substitute.
 */

@@ -24,27 +24,27 @@
     @class CPObject
     @ingroup foundation
     @brief The root class from which most classes are subclassed.
-    
+
     CPObject is the root class for most Cappuccino classes. Like in Objective-C,
     you have to declare parent class explicitly in Objective-J, so your custom
     classes should almost always subclass CPObject or one of its children.
-    
+
     CPObject provides facilities for class allocation and initialization,
     querying runtime about parent classes and available selectors, using KVC
     (key-value coding).
-    
+
     When you subclass CPObject, most of the time you override one selector - init.
     It is called for default initialization of custom object. You must call
-    parent class init in your overriden code:
+    parent class init in your overridden code:
     <pre>- (id)init
 {
     self = [super init];
-    if(self) {
+    if (self) {
         ... provide default initialization code for your object ...
     }
     return self;
 }</pre>
-    
+
     One more useful thing to override is description(). This selector
     is used to provide developer-readable information about object. description
     selector is often used with CPLog debugging:
@@ -58,7 +58,7 @@
 CPLog(@"Got some class: %@", inst);
     would output:
     \c Got \c some \c class: \c <SomeClass \c 10>
-    
+
     @todo document KVC usage.
 */
 @implementation CPObject
@@ -126,7 +126,7 @@ CPLog(@"Got some class: %@", inst);
 }
 
 /*!
-    Not necessary to call in Objective-J. Only exists for code compatability.
+    Not necessary to call in Objective-J. Only exists for code compatibility.
 */
 - (void)dealloc
 {
@@ -164,11 +164,11 @@ CPLog(@"Got some class: %@", inst);
 + (BOOL)isSubclassOfClass:(Class)aClass
 {
     var theClass = self;
-    
-    for(; theClass; theClass = theClass.super_class)
-        if(theClass === aClass)
+
+    for (; theClass; theClass = theClass.super_class)
+        if (theClass === aClass)
             return YES;
-    
+
     return NO;
 }
 
@@ -188,7 +188,7 @@ CPLog(@"Got some class: %@", inst);
 
 /*!
     Returns \c YES if the receiver is of the \c aClass class type.
-    @param aClass the class to test the receiper
+    @param aClass the class to test the receiver
 */
 - (BOOL)isMemberOfClass:(Class)aClass
 {
@@ -231,6 +231,23 @@ CPLog(@"Got some class: %@", inst);
     return !!class_getInstanceMethod(isa, aSelector);
 }
 
+/*!
+    Tests whether the receiver implements to the provided selector regardless of inheritance.
+    @param aSelector the selector for which to test the receiver
+    @return \c YES if the receiver implements the selector
+*/
+- (BOOL)implementsSelector:(SEL)aSelector
+{
+    var methods = class_copyMethodList(isa),
+        count = methods.length;
+
+    while (count--)
+        if (method_getName(methods[count]) === aSelector)
+            return YES;
+
+    return NO;
+}
+
 // Obtaining method information
 
 /*!
@@ -256,7 +273,7 @@ CPLog(@"Got some class: %@", inst);
 /*!
     Returns the method signature for the provided selector.
     @param aSelector the selector for which to find the method signature
-    @return the selector's methd signature
+    @return the selector's method signature
 */
 - (CPMethodSignature)methodSignatureForSelector:(SEL)aSelector
 {
@@ -312,6 +329,11 @@ CPLog(@"Got some class: %@", inst);
     return objj_msgSend(self, aSelector, anObject, anotherObject);
 }
 
+- (id)forwardingTargetForSelector:(SEL)aSelector
+{
+    return nil;
+}
+
 // Forwarding Messages
 /*!
     Subclasses can override this method to forward message to
@@ -324,36 +346,6 @@ CPLog(@"Got some class: %@", inst);
     [self doesNotRecognizeSelector:[anInvocation selector]];
 }
 
-/*!
-    Used for forwarding of messages to other objects.
-    @ignore
-*/
-// FIXME: This should be moved to the runtime?
-- (void)forward:(SEL)aSelector :(marg_list)args
-{
-    var signature = [self methodSignatureForSelector:aSelector];
-    
-    if (signature)
-    {
-        invocation = [CPInvocation invocationWithMethodSignature:signature];
-        
-        [invocation setTarget:self];
-        [invocation setSelector:aSelector];
-        
-        var index = 2,
-            count = args.length;
-            
-        for (; index < count; ++index)
-            [invocation setArgument:args[index] atIndex:index];
-        
-        [self forwardInvocation:invocation];
-        
-        return [invocation returnValue];
-    }
-    
-    [self doesNotRecognizeSelector:aSelector];
-}
-
 // Error Handling
 /*!
     Called by the Objective-J runtime when an object can't respond to
@@ -364,7 +356,7 @@ CPLog(@"Got some class: %@", inst);
 {
     [CPException raise:CPInvalidArgumentException reason:
         (class_isMetaClass(isa) ? "+" : "-") + " [" + [self className] + " " + aSelector + "] unrecognized selector sent to " +
-        (class_isMetaClass(isa) ? "class" : "instance") + " 0x" + [CPString stringWithHash:[self UID]]];
+        (class_isMetaClass(isa) ? "class " + class_getName(isa) : "instance 0x" + [CPString stringWithHash:[self UID]])];
 }
 
 // Archiving
@@ -433,11 +425,9 @@ CPLog(@"Got some class: %@", inst);
     Sets the class version number.
     @param the new version number for the class
 */
-+ (id)setVersion:(int)aVersion
++ (void)setVersion:(int)aVersion
 {
-    version = aVersion;
-    
-    return self;
+    class_setVersion(self, aVersion);
 }
 
 /*!
@@ -445,7 +435,7 @@ CPLog(@"Got some class: %@", inst);
 */
 + (int)version
 {
-    return version;
+    return class_getVersion(self);
 }
 
 // Scripting (?)
@@ -454,6 +444,8 @@ CPLog(@"Got some class: %@", inst);
 */
 - (CPString)className
 {
+    // FIXME: Why doesn't this work in KVO???
+    // return class_getName([self class]);
     return isa.name;
 }
 
@@ -525,13 +517,3 @@ CPLog(@"Got some class: %@", inst);
 }
 
 @end
-
-// override toString on Objective-J objects so we get the actual description of the object
-// when coerced to a string, instead of "[Object object]"
-objj_class.prototype.toString = objj_object.prototype.toString = function()
-{
-    if (this.isa && class_getInstanceMethod(this.isa, "description") != NULL)
-        return [this description]
-    else
-        return String(this) + " (-description not implemented)";
-}

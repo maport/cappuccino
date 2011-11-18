@@ -20,12 +20,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#import "../Foundation/Ref.h"
+
+@import "../Foundation/CPFormatter.j"
 @import "CPFont.j"
 @import "CPShadow.j"
 @import "CPView.j"
-
-#include "CoreGraphics/CGGeometry.h"
-#include "Platform/Platform.h"
+@import "CPKeyValueBinding.j"
 
 CPLeftTextAlignment             = 0;
 CPRightTextAlignment            = 1;
@@ -44,21 +45,21 @@ CPLineBreakByTruncatingHead     = 3;
 CPLineBreakByTruncatingTail     = 4;
 CPLineBreakByTruncatingMiddle   = 5;
 
-CPTopVerticalTextAlignment      = 1,
-CPCenterVerticalTextAlignment   = 2,
+CPTopVerticalTextAlignment      = 1;
+CPCenterVerticalTextAlignment   = 2;
 CPBottomVerticalTextAlignment   = 3;
 
-CPScaleProportionally   = 0;
-CPScaleToFit            = 1;
-CPScaleNone             = 2;
+CPScaleProportionally           = 0;
+CPScaleToFit                    = 1;
+CPScaleNone                     = 2;
 
-CPNoImage       = 0;
-CPImageOnly     = 1;
-CPImageLeft     = 2;
-CPImageRight    = 3;
-CPImageBelow    = 4;
-CPImageAbove    = 5;
-CPImageOverlaps = 6;
+CPNoImage                       = 0;
+CPImageOnly                     = 1;
+CPImageLeft                     = 2;
+CPImageRight                    = 3;
+CPImageBelow                    = 4;
+CPImageAbove                    = 5;
+CPImageOverlaps                 = 6;
 
 CPOnState                       = 1;
 CPOffState                      = 0;
@@ -73,9 +74,9 @@ CPControlTextDidBeginEditingNotification    = "CPControlTextDidBeginEditingNotif
 CPControlTextDidChangeNotification          = "CPControlTextDidChangeNotification";
 CPControlTextDidEndEditingNotification      = "CPControlTextDidEndEditingNotification";
 
-var CPControlBlackColor     = [CPColor blackColor];
+var CPControlBlackColor = [CPColor blackColor];
 
-/*! 
+/*!
     @ingroup appkit
     @class CPControl
 
@@ -84,7 +85,8 @@ var CPControlBlackColor     = [CPColor blackColor];
 @implementation CPControl : CPView
 {
     id                  _value;
-    
+    CPFormatter         _formatter @accessors(property=formatter);
+
     // Target-Action Support
     id                  _target;
     SEL                 _action;
@@ -96,8 +98,6 @@ var CPControlBlackColor     = [CPColor blackColor];
     BOOL                _trackingWasWithinFrame;
     unsigned            _trackingMouseDownFlags;
     CGPoint             _previousTrackingLocation;
-
-    CPString            _toolTip;
 }
 
 + (CPDictionary)themeAttributes
@@ -126,21 +126,66 @@ var CPControlBlackColor     = [CPColor blackColor];
                                                 @"max-size"]];
 }
 
++ (void)initialize
+{
+    if (self === [CPControl class])
+    {
+        [self exposeBinding:@"value"];
+        [self exposeBinding:@"objectValue"];
+        [self exposeBinding:@"stringValue"];
+        [self exposeBinding:@"integerValue"];
+        [self exposeBinding:@"intValue"];
+        [self exposeBinding:@"doubleValue"];
+        [self exposeBinding:@"floatValue"];
+
+        [self exposeBinding:@"enabled"];
+    }
+}
+
++ (Class)_binderClassForBinding:(CPString)theBinding
+{
+    if (theBinding === CPValueBinding)
+        return [_CPValueBinder class];
+
+    return [super _binderClassForBinding:theBinding];
+}
+
+/*!
+    Reverse set the binding iff the CPContinuouslyUpdatesValueBindingOption is set.
+*/
+- (void)_continuouslyReverseSetBinding
+{
+    var binderClass = [[self class] _binderClassForBinding:CPValueBinding],
+        theBinding = [binderClass getBinding:CPValueBinding forObject:self];
+
+    if ([theBinding continuouslyUpdatesValue])
+        [theBinding reverseSetValueFor:@"objectValue"];
+}
+
+- (void)_reverseSetBinding
+{
+    var binderClass = [[self class] _binderClassForBinding:CPValueBinding],
+        theBinding = [binderClass getBinding:CPValueBinding forObject:self];
+
+    [theBinding reverseSetValueFor:@"objectValue"];
+}
+
 - (id)initWithFrame:(CGRect)aFrame
 {
     self = [super initWithFrame:aFrame];
-    
+
     if (self)
     {
         _sendActionOn = CPLeftMouseUpMask;
         _trackingMouseDownFlags = 0;
     }
-    
+
     return self;
 }
 
 /*!
-    Sets the receiver's target action
+    Sets the receiver's target action.
+
     @param anAction Sets the action message that gets sent to the target.
 */
 - (void)setAction:(SEL)anAction
@@ -149,7 +194,7 @@ var CPControlBlackColor     = [CPColor blackColor];
 }
 
 /*!
-    Returns the receiver's target action
+    Returns the receiver's target action.
 */
 - (SEL)action
 {
@@ -158,6 +203,7 @@ var CPControlBlackColor     = [CPColor blackColor];
 
 /*!
     Sets the receiver's target. The target receives action messages from the receiver.
+
     @param aTarget the object that will receive the message specified by action
 */
 - (void)setTarget:(id)aTarget
@@ -175,49 +221,25 @@ var CPControlBlackColor     = [CPColor blackColor];
 
 /*!
     Causes \c anAction to be sent to \c anObject.
+
     @param anAction the action to send
     @param anObject the object to which the action will be sent
 */
-- (void)sendAction:(SEL)anAction to:(id)anObject
+- (BOOL)sendAction:(SEL)anAction to:(id)anObject
 {
-    [CPApp sendAction:anAction to:anObject from:self];
+    [self _reverseSetBinding];
+
+    return [CPApp sendAction:anAction to:anObject from:self];
 }
 
 - (int)sendActionOn:(int)mask
 {
     var previousMask = _sendActionOn;
-    
+
     _sendActionOn = mask;
-    
+
     return previousMask;
 }
-
-/*!
-    Sets the tooltip for the receiver.
-    @param aToolTip the tooltip
-*/
-/*
--(void)setToolTip:(CPString)aToolTip
-{
-    if (_toolTip == aToolTip)
-        return;
-    
-    _toolTip = aToolTip;
-
-#if PLATFORM(DOM)
-    _DOMElement.title = aToolTip;
-#endif
-}
-*/
-/*!
-    Returns the receiver's tooltip
-*/
-/*
--(CPString)toolTip
-{
-    return _toolTip;
-}
-*/
 
 /*!
     Returns whether the control can continuously send its action messages.
@@ -230,16 +252,19 @@ var CPControlBlackColor     = [CPColor blackColor];
 
 /*!
     Sets whether the cell can continuously send its action messages.
- */
+*/
 - (void)setContinuous:(BOOL)flag
 {
     // Some subclasses should redefine this with CPLeftMouseDraggedMask
     if (flag)
         _sendActionOn |= CPPeriodicMask;
-    else 
+    else
         _sendActionOn &= ~CPPeriodicMask;
 }
 
+/*!
+    Returns YES if the receiver tracks the mouse outside the frame, otherwise NO.
+*/
 - (BOOL)tracksMouseOutsideOfFrame
 {
     return NO;
@@ -248,18 +273,22 @@ var CPControlBlackColor     = [CPColor blackColor];
 - (void)trackMouse:(CPEvent)anEvent
 {
     var type = [anEvent type],
-        currentLocation = [self convertPoint:[anEvent locationInWindow] fromView:nil];
+        currentLocation = [self convertPoint:[anEvent locationInWindow] fromView:nil],
         isWithinFrame = [self tracksMouseOutsideOfFrame] || CGRectContainsPoint([self bounds], currentLocation);
 
     if (type === CPLeftMouseUp)
     {
         [self stopTracking:_previousTrackingLocation at:currentLocation mouseIsUp:YES];
-        
+
         _trackingMouseDownFlags = 0;
+
+        if (isWithinFrame)
+            [self setThemeState:CPThemeStateHovered];
     }
-    
     else
     {
+        [self unsetThemeState:CPThemeStateHovered];
+
         if (type === CPLeftMouseDown)
         {
             _trackingMouseDownFlags = [anEvent modifierFlags];
@@ -271,20 +300,20 @@ var CPControlBlackColor     = [CPColor blackColor];
             {
                 if (!_trackingWasWithinFrame)
                     _continuousTracking = [self startTrackingAt:currentLocation];
-                
+
                 else if (_continuousTracking)
                     _continuousTracking = [self continueTracking:_previousTrackingLocation at:currentLocation];
             }
             else
                 [self stopTracking:_previousTrackingLocation at:currentLocation mouseIsUp:NO];
         }
-        
+
         [CPApp setTarget:self selector:@selector(trackMouse:) forNextEventMatchingMask:CPLeftMouseDraggedMask | CPLeftMouseUpMask untilDate:nil inMode:nil dequeue:YES];
     }
-    
+
     if ((_sendActionOn & (1 << type)) && isWithinFrame)
         [self sendAction:_action to:_target];
-    
+
     _trackingWasWithinFrame = isWithinFrame;
     _previousTrackingLocation = currentLocation;
 }
@@ -298,20 +327,45 @@ var CPControlBlackColor     = [CPColor blackColor];
     return 0;
 }
 
-- (void)performClick:(id)sender 
+/*!
+    Perform a click on the receiver.
+
+    @param sender - The sender object
+*/
+- (void)performClick:(id)sender
 {
+    if (![self isEnabled])
+        return;
+
     [self highlight:YES];
     [self setState:[self nextState]];
-    [self sendAction:[self action] to:[self target]];
-    
-    [CPTimer scheduledTimerWithTimeInterval:0.1 target:self selector:@selector(unhighlightButtonTimerDidFinish:) userInfo:nil repeats:NO];
+
+    try
+    {
+        [self sendAction:[self action] to:[self target]];
+    }
+    catch (e)
+    {
+        throw e;
+    }
+    finally
+    {
+        [CPTimer scheduledTimerWithTimeInterval:0.1 target:self selector:@selector(unhighlightButtonTimerDidFinish:) userInfo:nil repeats:NO];
+    }
 }
 
+/*!
+    @ignore
+    Fired when the button timer finished, usually after the user hits enter.
+*/
 - (void)unhighlightButtonTimerDidFinish:(id)sender
 {
     [self highlight:NO];
 }
 
+/*!
+    Returns the mask of modifier keys held down when the user clicked.
+*/
 - (unsigned)mouseDownFlags
 {
     return _trackingMouseDownFlags;
@@ -320,7 +374,7 @@ var CPControlBlackColor     = [CPColor blackColor];
 - (BOOL)startTrackingAt:(CGPoint)aPoint
 {
     [self highlight:YES];
-    
+
     return (_sendActionOn & CPPeriodicMask) || (_sendActionOn & CPLeftMouseDraggedMask);
 }
 
@@ -338,12 +392,31 @@ var CPControlBlackColor     = [CPColor blackColor];
 {
     if (![self isEnabled])
         return;
-    
+
     [self trackMouse:anEvent];
 }
 
+- (void)mouseEntered:(CPEvent)anEvent
+{
+    if (![self isEnabled])
+        return;
+
+    [self setThemeState:CPThemeStateHovered];
+}
+
+- (void)mouseExited:(CPEvent)anEvent
+{
+    var currentLocation = [self convertPoint:[anEvent locationInWindow] fromView:nil],
+        isWithinFrame = [self tracksMouseOutsideOfFrame] || CGRectContainsPoint([self bounds], currentLocation);
+
+    // Make sure we're not still in the frame because Cappuccino will sent mouseExited events
+    // for all of the (ephemeral) subviews of a view as well.
+    if (!isWithinFrame)
+        [self unsetThemeState:CPThemeStateHovered];
+}
+
 /*!
-    Returns the receiver's object value
+    Returns the receiver's object value.
 */
 - (id)objectValue
 {
@@ -351,18 +424,18 @@ var CPControlBlackColor     = [CPColor blackColor];
 }
 
 /*!
-    Set's the receiver's object value
+    Sets the receiver's object value.
 */
 - (void)setObjectValue:(id)anObject
 {
     _value = anObject;
-    
+
     [self setNeedsLayout];
     [self setNeedsDisplay:YES];
 }
 
 /*!
-    Returns the receiver's float value
+    Returns the receiver's float value.
 */
 - (float)floatValue
 {
@@ -371,7 +444,7 @@ var CPControlBlackColor     = [CPColor blackColor];
 }
 
 /*!
-    Sets the receiver's float value
+    Sets the receiver's float value.
 */
 - (void)setFloatValue:(float)aValue
 {
@@ -379,7 +452,7 @@ var CPControlBlackColor     = [CPColor blackColor];
 }
 
 /*!
-    Returns the receiver's double value
+    Returns the receiver's double value.
 */
 - (double)doubleValue
 {
@@ -388,7 +461,7 @@ var CPControlBlackColor     = [CPColor blackColor];
 }
 
 /*!
-    Set's the receiver's double value
+    Sets the receiver's double value.
 */
 - (void)setDoubleValue:(double)anObject
 {
@@ -396,7 +469,7 @@ var CPControlBlackColor     = [CPColor blackColor];
 }
 
 /*!
-    Returns the receiver's int value
+    Returns the receiver's int value.
 */
 - (int)intValue
 {
@@ -405,7 +478,7 @@ var CPControlBlackColor     = [CPColor blackColor];
 }
 
 /*!
-    Set's the receiver's int value
+    Sets the receiver's int value.
 */
 - (void)setIntValue:(int)anObject
 {
@@ -413,7 +486,7 @@ var CPControlBlackColor     = [CPColor blackColor];
 }
 
 /*!
-    Returns the receiver's int value
+    Returns the receiver's int value.
 */
 - (int)integerValue
 {
@@ -422,7 +495,7 @@ var CPControlBlackColor     = [CPColor blackColor];
 }
 
 /*!
-    Set's the receiver's int value
+    Sets the receiver's int value.
 */
 - (void)setIntegerValue:(int)anObject
 {
@@ -430,19 +503,50 @@ var CPControlBlackColor     = [CPColor blackColor];
 }
 
 /*!
-    Returns the receiver's int value
+    Returns the receiver's string value.
 */
 - (CPString)stringValue
 {
+    if (_formatter && _value !== undefined && _value !== nil)
+    {
+        var formattedValue = [self hasThemeState:CPThemeStateEditing] ? [_formatter editingStringForObjectValue:_value] : [_formatter stringForObjectValue:_value];
+
+        if (formattedValue !== nil && formattedValue !== undefined)
+            return formattedValue;
+    }
+
     return (_value === undefined || _value === nil) ? "" : String(_value);
 }
 
 /*!
-    Set's the receiver's int value
+    Sets the receiver's string value.
 */
-- (void)setStringValue:(CPString)anObject
+- (void)setStringValue:(CPString)aString
 {
-    [self setObjectValue:anObject];
+    // Cocoa raises an invalid parameter assertion and returns if you pass nil.
+    if (aString === nil || aString === undefined)
+    {
+        CPLog.warn("nil sent to CPControl -setStringValue");
+        return;
+    }
+
+    var value;
+
+    if (_formatter)
+    {
+        value = nil;
+
+        if ([_formatter getObjectValue:AT_REF(value) forString:aString errorDescription:nil] === NO)
+        {
+            // If the given string is non-empty and doesn't work, Cocoa tries an empty string.
+            if (!aString || [_formatter getObjectValue:AT_REF(value) forString:@"" errorDescription:nil] === NO)
+                value = undefined;  // Means the value is invalid
+        }
+    }
+    else
+        value = aString;
+
+    [self setObjectValue:value];
 }
 
 - (void)takeDoubleValueFrom:(id)sender
@@ -458,20 +562,17 @@ var CPControlBlackColor     = [CPColor blackColor];
         [self setFloatValue:[sender floatValue]];
 }
 
-
 - (void)takeIntegerValueFrom:(id)sender
 {
     if ([sender respondsToSelector:@selector(integerValue)])
         [self setIntegerValue:[sender integerValue]];
 }
 
-
 - (void)takeIntValueFrom:(id)sender
 {
     if ([sender respondsToSelector:@selector(intValue)])
         [self setIntValue:[sender intValue]];
 }
-
 
 - (void)takeObjectValueFrom:(id)sender
 {
@@ -485,55 +586,228 @@ var CPControlBlackColor     = [CPColor blackColor];
         [self setStringValue:[sender stringValue]];
 }
 
-- (void)textDidBeginEditing:(CPNotification)note 
+- (void)textDidBeginEditing:(CPNotification)note
 {
     //this looks to prevent false propagation of notifications for other objects
-    if([note object] != self)
+    if ([note object] != self)
         return;
 
     [[CPNotificationCenter defaultCenter] postNotificationName:CPControlTextDidBeginEditingNotification object:self userInfo:[CPDictionary dictionaryWithObject:[note object] forKey:"CPFieldEditor"]];
 }
 
-- (void)textDidChange:(CPNotification)note 
+- (void)textDidChange:(CPNotification)note
 {
     //this looks to prevent false propagation of notifications for other objects
-    if([note object] != self)
+    if ([note object] != self)
         return;
 
     [[CPNotificationCenter defaultCenter] postNotificationName:CPControlTextDidChangeNotification object:self userInfo:[CPDictionary dictionaryWithObject:[note object] forKey:"CPFieldEditor"]];
 }
 
-- (void)textDidEndEditing:(CPNotification)note 
+- (void)textDidEndEditing:(CPNotification)note
 {
     //this looks to prevent false propagation of notifications for other objects
-    if([note object] != self)
+    if ([note object] != self)
         return;
+
+    [self _reverseSetBinding];
 
     [[CPNotificationCenter defaultCenter] postNotificationName:CPControlTextDidEndEditingNotification object:self userInfo:[CPDictionary dictionaryWithObject:[note object] forKey:"CPFieldEditor"]];
 }
 
-#define BRIDGE(UPPERCASE, LOWERCASE, ATTRIBUTENAME) \
-/*! Sets the value for ATTRIBUTENAME */\
-- (void)set##UPPERCASE:(id)aValue\
-{\
-[self setValue:aValue forThemeAttribute:ATTRIBUTENAME];\
-}\
-/*! Returns the current value for ATTRIBUTENAME */\
-- (id)LOWERCASE\
-{\
-return [self valueForThemeAttribute:ATTRIBUTENAME];\
+/*!
+    Sets the text alignment of the control.
+
+    <pre>
+    CPLeftTextAlignment
+    CPCenterTextAlignment
+    CPRightTextAlignment
+    CPJustifiedTextAlignment
+    CPNaturalTextAlignment
+    </pre>
+*/
+- (void)setAlignment:(CPTextAlignment)alignment
+{
+    [self setValue:alignment forThemeAttribute:@"alignment"];
 }
 
-BRIDGE(Alignment, alignment, "alignment")
-BRIDGE(VerticalAlignment, verticalAlignment, "vertical-alignment")
-BRIDGE(LineBreakMode, lineBreakMode, "line-break-mode")
-BRIDGE(TextColor, textColor, "text-color")
-BRIDGE(Font, font, "font")
-BRIDGE(TextShadowColor, textShadowColor, "text-shadow-color")
-BRIDGE(TextShadowOffset, textShadowOffset, "text-shadow-offset")
-BRIDGE(ImagePosition, imagePosition, "image-position")
-BRIDGE(ImageScaling, imageScaling, "image-scaling")
+/*!
+    Returns the text alignment of the control.
+*/
+- (CPTextAlignment)alignment
+{
+    return [self valueForThemeAttribute:@"alignment"];
+}
 
+/*!
+    Set the vertical text alignment of the control.
+
+    <pre>
+    CPTopVerticalTextAlignment
+    CPCenterVerticalTextAlignment
+    CPBottomVerticalTextAlignment
+    </pre>
+*/
+- (void)setVerticalAlignment:(CPTextVerticalAlignment)alignment
+{
+    [self setValue:alignment forThemeAttribute:@"vertical-alignment"];
+}
+
+/*!
+    Returns the vertical text alignment of the receiver.
+*/
+- (CPTextVerticalAlignment)verticalAlignment
+{
+    return [self valueForThemeAttribute:@"vertical-alignment"];
+}
+
+/*!
+    Sets the line break mode of the receiver.
+
+    <pre>
+    CPLineBreakByWordWrapping
+    CPLineBreakByCharWrapping
+    CPLineBreakByClipping
+    CPLineBreakByTruncatingHead
+    CPLineBreakByTruncatingTail
+    CPLineBreakByTruncatingMiddle
+    </pre>
+*/
+- (void)setLineBreakMode:(CPLineBreakMode)mode
+{
+    [self setValue:mode forThemeAttribute:@"line-break-mode"];
+}
+
+/*!
+    Returns the line break mode of the control.
+*/
+- (CPLineBreakMode)lineBreakMode
+{
+    return [self valueForThemeAttribute:@"line-break-mode"];
+}
+
+/*!
+    Sets the text color of the receiver.
+
+    @param aColor - A CPColor object.
+*/
+- (void)setTextColor:(CPColor)aColor
+{
+    [self setValue:aColor forThemeAttribute:@"text-color"];
+}
+
+/*!
+    Returns the text color of the receiver.
+*/
+- (CPColor)textColor
+{
+    return [self valueForThemeAttribute:@"text-color"];
+}
+
+/*!
+    Sets the shadow color of the text for the receiver.
+*/
+- (void)setTextShadowColor:(CPColor)aColor
+{
+    [self setValue:aColor forThemeAttribute:@"text-shadow-color"];
+}
+
+/*!
+    Returns the shadow color of the text for the control.
+*/
+- (CPColor)textShadowColor
+{
+    return [self valueForThemeAttribute:@"text-shadow-color"];
+}
+
+/*!
+    Sets the shadow offset for the text.
+
+    @param offset - a CGSize with the x and y offsets.
+*/
+- (void)setTextShadowOffset:(CGSize)offset
+{
+    [self setValue:offset forThemeAttribute:@"text-shadow-offset"];
+}
+
+/*!
+    Returns the text shadow offset of the receiver.
+*/
+- (CGSize)textShadowOffset
+{
+    return [self valueForThemeAttribute:@"text-shadow-offset"];
+}
+
+/*!
+    Sets the font of the control.
+*/
+- (void)setFont:(CPFont)aFont
+{
+    [self setValue:aFont forThemeAttribute:@"font"];
+}
+
+/*!
+    Returns the font of the control.
+*/
+- (CPFont)font
+{
+    return [self valueForThemeAttribute:@"font"];
+}
+
+/*!
+    Sets the image position of the control.
+
+    <pre>
+    CPNoImage
+    CPImageOnly
+    CPImageLeft
+    CPImageRight
+    CPImageBelow
+    CPImageAbove
+    CPImageOverlaps
+    </pre>
+*/
+- (void)setImagePosition:(CPCellImagePosition)position
+{
+    [self setValue:position forThemeAttribute:@"image-position"];
+}
+
+/*!
+    Returns the image position of the receiver.
+*/
+- (CPCellImagePosition)imagePosition
+{
+    return [self valueForThemeAttribute:@"image-position"];
+}
+
+/*!
+    Sets the image scaling of the control.
+
+    <pre>
+    CPScaleProportionally
+    CPScaleToFit
+    CPScaleNone
+    </pre>
+*/
+- (void)setImageScaling:(CPImageScaling)scaling
+{
+    [self setValue:scaling forThemeAttribute:@"image-scaling"];
+}
+
+/*!
+    Returns the image scaling of the control.
+*/
+- (CPImageScaling)imageScaling
+{
+    return [self valueForThemeAttribute:@"image-scaling"];
+}
+
+/*!
+    Sets the enabled status of the control.
+    Controls that are not enabled can not be used by the user and obtain the CPThemeStateDisabled theme state.
+
+    @param BOOL - YES if the control should be enabled, otherwise NO.
+*/
 - (void)setEnabled:(BOOL)isEnabled
 {
     if (isEnabled)
@@ -542,16 +816,29 @@ BRIDGE(ImageScaling, imageScaling, "image-scaling")
         [self setThemeState:CPThemeStateDisabled];
 }
 
+/*!
+    Returns YES if the receiver is enabled, otherwise NO.
+*/
 - (BOOL)isEnabled
 {
     return ![self hasThemeState:CPThemeStateDisabled];
 }
 
+/*!
+    Highlights the receiver.
+
+    @param BOOL - YES if the receiver should be highlighted, otherwise NO.
+*/
 - (void)highlight:(BOOL)shouldHighlight
 {
     [self setHighlighted:shouldHighlight];
 }
 
+/*!
+    Highlights the receiver.
+
+    @param BOOL - YES if the receiver should be highlighted, otherwise NO.
+*/
 - (void)setHighlighted:(BOOL)isHighlighted
 {
     if (isHighlighted)
@@ -560,6 +847,9 @@ BRIDGE(ImageScaling, imageScaling, "image-scaling")
         [self unsetThemeState:CPThemeStateHighlighted];
 }
 
+/*!
+    Returns YES if the control is highlighted, otherwise NO.
+*/
 - (BOOL)isHighlighted
 {
     return [self hasThemeState:CPThemeStateHighlighted];
@@ -570,7 +860,7 @@ BRIDGE(ImageScaling, imageScaling, "image-scaling")
 var CPControlValueKey           = "CPControlValueKey",
     CPControlControlStateKey    = @"CPControlControlStateKey",
     CPControlIsEnabledKey       = "CPControlIsEnabledKey",
-    
+
     CPControlTargetKey          = "CPControlTargetKey",
     CPControlActionKey          = "CPControlActionKey",
     CPControlSendActionOnKey    = "CPControlSendActionOnKey",
@@ -583,6 +873,7 @@ var __Deprecated__CPImageViewImageKey   = @"CPImageViewImageKey";
 
 /*
     Initializes the control by unarchiving it from a coder.
+
     @param aCoder the coder from which to unarchive the control
     @return the initialized control
 */
@@ -600,12 +891,13 @@ var __Deprecated__CPImageViewImageKey   = @"CPImageViewImageKey";
         [self sendActionOn:[aCoder decodeIntForKey:CPControlSendActionOnKey]];
         [self setSendsActionOnEndEditing:[aCoder decodeBoolForKey:CPControlSendsActionOnEndEditingKey]];
     }
-    
+
     return self;
 }
 
 /*
     Archives the control to the provided coder.
+
     @param aCoder the coder to which the control will be archived.
 */
 - (void)encodeWithCoder:(CPCoder)aCoder
@@ -615,13 +907,15 @@ var __Deprecated__CPImageViewImageKey   = @"CPImageViewImageKey";
     if (_sendsActionOnEndEditing)
         [aCoder encodeBool:_sendsActionOnEndEditing forKey:CPControlSendsActionOnEndEditingKey];
 
-    if (_value !== nil)
-        [aCoder encodeObject:_value forKey:CPControlValueKey];
+    var objectValue = [self objectValue];
+
+    if (objectValue !== nil)
+        [aCoder encodeObject:objectValue forKey:CPControlValueKey];
 
     if (_target !== nil)
         [aCoder encodeConditionalObject:_target forKey:CPControlTargetKey];
 
-    if (_action !== NULL)
+    if (_action !== nil)
         [aCoder encodeObject:_action forKey:CPControlActionKey];
 
     [aCoder encodeInt:_sendActionOn forKey:CPControlSendActionOnKey];
@@ -636,7 +930,7 @@ var _CPControlSizeIdentifiers               = [],
 _CPControlSizeIdentifiers[CPRegularControlSize] = "Regular";
 _CPControlSizeIdentifiers[CPSmallControlSize]   = "Small";
 _CPControlSizeIdentifiers[CPMiniControlSize]    = "Mini";
-    
+
 function _CPControlIdentifierForControlSize(aControlSize)
 {
     return _CPControlSizeIdentifiers[aControlSize];
@@ -647,21 +941,21 @@ function _CPControlColorWithPatternImage(sizes, aClassName)
     var index = 1,
         count = arguments.length,
         identifier = "";
-    
+
     for (; index < count; ++index)
         identifier += arguments[index];
-    
+
     var color = _CPControlCachedColorWithPatternImages[identifier];
-    
+
     if (!color)
     {
         var bundle = [CPBundle bundleForClass:[CPControl class]];
-    
+
         color = [CPColor colorWithPatternImage:[[CPImage alloc] initWithContentsOfFile:[bundle pathForResource:aClassName + "/" + identifier + ".png"] size:sizes[identifier]]];
 
         _CPControlCachedColorWithPatternImages[identifier] = color;
     }
-    
+
     return color;
 }
 
@@ -670,17 +964,17 @@ function _CPControlThreePartImagePattern(isVertical, sizes, aClassName)
     var index = 2,
         count = arguments.length,
         identifier = "";
-    
+
     for (; index < count; ++index)
         identifier += arguments[index];
 
     var color = _CPControlCachedThreePartImagePattern[identifier];
-    
+
     if (!color)
     {
         var bundle = [CPBundle bundleForClass:[CPControl class]],
             path = aClassName + "/" + identifier;
-        
+
         sizes = sizes[identifier];
 
         color = [CPColor colorWithPatternImage:[[CPThreePartImage alloc] initWithImageSlices:[
@@ -688,9 +982,9 @@ function _CPControlThreePartImagePattern(isVertical, sizes, aClassName)
                     [[CPImage alloc] initWithContentsOfFile:[bundle pathForResource:path + "1.png"] size:sizes[1]],
                     [[CPImage alloc] initWithContentsOfFile:[bundle pathForResource:path + "2.png"] size:sizes[2]]
                 ] isVertical:isVertical]];
-                
+
         _CPControlCachedThreePartImagePattern[identifier] = color;
     }
-    
+
     return color;
 }

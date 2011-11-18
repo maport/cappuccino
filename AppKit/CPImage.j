@@ -28,8 +28,6 @@
 
 @import "CPGeometry.j"
 
-#include "Platform/Platform.h"
-
 
 CPImageLoadStatusInitialized    = 0;
 CPImageLoadStatusLoading        = 1;
@@ -46,7 +44,8 @@ CPImageNameColorPanel               = @"CPImageNameColorPanel";
 CPImageNameColorPanelHighlighted    = @"CPImageNameColorPanelHighlighted";
 
 var imagesForNames = { },
-    AppKitImageForNames = { };
+    AppKitImageForNames = { },
+    ImageDescriptionFormat = "%s {\n   filename: \"%s\",\n   size: { width:%f, height:%f }\n}";
 
 AppKitImageForNames[CPImageNameColorPanel]              = CGSizeMake(26.0, 29.0);
 AppKitImageForNames[CPImageNameColorPanelHighlighted]   = CGSizeMake(26.0, 29.0);
@@ -67,7 +66,7 @@ function CPAppKitImage(aFilename, aSize)
     return CPImageInBundle(aFilename, aSize, [CPBundle bundleForClass:[CPView class]]);
 }
 
-/*! 
+/*!
     @ingroup appkit
     @class CPImage
 
@@ -75,7 +74,7 @@ function CPAppKitImage(aFilename, aSize)
     all image types supported by the browser.
 
     @par Delegate Methods
-    
+
     @delegate -(void)imageDidLoad:(CPImage)image;
     Called when the specified image has finished loading.
     @param image the image that loaded
@@ -193,6 +192,9 @@ function CPAppKitImage(aFilename, aSize)
 
     var imageOrSize = AppKitImageForNames[aName];
 
+    if (!imageOrSize)
+        return nil;
+
     if (!imageOrSize.isa)
     {
         imageOrSize = CPAppKitImage("CPImage/" + aName + ".png", imageOrSize);
@@ -205,17 +207,19 @@ function CPAppKitImage(aFilename, aSize)
     return imageOrSize;
 }
 
-- (void)setName:(CPString)aName
+- (BOOL)setName:(CPString)aName
 {
     if (_name === aName)
-        return;
+        return YES;
 
-    if (imagesForNames[aName] === self)
-        imagesForNames[aName] = nil;
+    if (imagesForNames[aName])
+        return NO;
 
     _name = aName;
 
     imagesForNames[aName] = self;
+
+    return YES;
 }
 
 - (CPString)name
@@ -319,6 +323,24 @@ function CPAppKitImage(aFilename, aSize)
 - (BOOL)isNinePartImage
 {
     return NO;
+}
+
+- (CPString)description
+{
+    var filename = [self filename],
+        size = [self size];
+
+    if (filename.indexOf("data:") === 0)
+    {
+        var index = filename.indexOf(",");
+
+        if (index > 0)
+            filename = [CPString stringWithFormat:@"%s,%s...%s", filename.substr(0, index), filename.substr(index + 1, 10), filename.substr(filename.length - 10)];
+        else
+            filename = "data:<unknown type>";
+    }
+
+    return [CPString stringWithFormat:ImageDescriptionFormat, [super description], filename, size.width, size.height];
 }
 
 /* @ignore */

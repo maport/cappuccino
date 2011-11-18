@@ -26,17 +26,24 @@
 @import "CPImage.j"
 @import "CPShadowView.j"
 
-#include "Platform/Platform.h"
-#include "Platform/DOM/CPDOMDisplayServer.h"
-
-#include "CoreGraphics/CGGeometry.h"
 
 CPScaleProportionally   = 0;
 CPScaleToFit            = 1;
 CPScaleNone             = 2;
 
-var CPImageViewShadowBackgroundColor = nil;
-    
+CPImageAlignCenter      = 0;
+CPImageAlignTop         = 1;
+CPImageAlignTopLeft     = 2;
+CPImageAlignTopRight    = 3;
+CPImageAlignLeft        = 4;
+CPImageAlignBottom      = 5;
+CPImageAlignBottomLeft  = 6;
+CPImageAlignBottomRight = 7;
+CPImageAlignRight       = 8;
+
+var CPImageViewShadowBackgroundColor = nil,
+    CPImageViewEmptyPlaceholderImage = nil;
+
 var LEFT_SHADOW_INSET       = 3.0,
     RIGHT_SHADOW_INSET      = 3.0,
     TOP_SHADOW_INSET        = 3.0,
@@ -44,7 +51,7 @@ var LEFT_SHADOW_INSET       = 3.0,
     VERTICAL_SHADOW_INSET   = TOP_SHADOW_INSET + BOTTOM_SHADOW_INSET,
     HORIZONTAL_SHADOW_INSET = LEFT_SHADOW_INSET + RIGHT_SHADOW_INSET;
 
-/*! 
+/*!
     @ingroup appkit
     @class CPImageView
 
@@ -52,20 +59,28 @@ var LEFT_SHADOW_INSET       = 3.0,
 */
 @implementation CPImageView : CPControl
 {
-    DOMElement      _DOMImageElement;
-    
-    BOOL            _hasShadow;
-    CPView          _shadowView;
+    DOMElement          _DOMImageElement;
 
-    BOOL            _isEditable;
+    BOOL                _hasShadow;
+    CPView              _shadowView;
 
-    CGRect          _imageRect;
+    BOOL                _isEditable;
+
+    CGRect              _imageRect;
+    CPImageAlignment    _imageAlignment;
+}
+
++ (void)initialize
+{
+    var bundle = [CPBundle bundleForClass:[CPView class]];
+
+    CPImageViewEmptyPlaceholderImage = [[CPImage alloc] initWithContentsOfFile:[bundle pathForResource:@"empty.png"]];
 }
 
 - (id)initWithFrame:(CGRect)aFrame
 {
     self = [super initWithFrame:aFrame];
-    
+
     if (self)
     {
 #if PLATFORM(DOM)
@@ -81,11 +96,11 @@ var LEFT_SHADOW_INSET       = 3.0,
         }
 
         CPDOMDisplayServerAppendChild(_DOMElement, _DOMImageElement);
-        
+
         _DOMImageElement.style.visibility = "hidden";
 #endif
     }
-    
+
     return self;
 }
 
@@ -106,29 +121,29 @@ var LEFT_SHADOW_INSET       = 3.0,
 - (void)setObjectValue:(CPImage)anImage
 {
     var oldImage = [self objectValue];
-    
+
     if (oldImage === anImage)
         return;
-        
+
     [super setObjectValue:anImage];
-    
+
     var defaultCenter = [CPNotificationCenter defaultCenter];
-    
+
     if (oldImage)
         [defaultCenter removeObserver:self name:CPImageDidLoadNotification object:oldImage];
 
     var newImage = [self objectValue];
-    
+
 #if PLATFORM(DOM)
-    _DOMImageElement.src = newImage ? [newImage filename] : "";
+    _DOMImageElement.src = newImage ? [newImage filename] : [CPImageViewEmptyPlaceholderImage filename];
 #endif
 
     var size = [newImage size];
-    
+
     if (size && size.width === -1 && size.height === -1)
     {
         [defaultCenter addObserver:self selector:@selector(imageDidLoad:) name:CPImageDidLoadNotification object:newImage];
-        
+
 #if PLATFORM(DOM)
         _DOMImageElement.width = 0;
         _DOMImageElement.height = 0;
@@ -147,7 +162,7 @@ var LEFT_SHADOW_INSET       = 3.0,
 - (void)imageDidLoad:(CPNotification)aNotification
 {
     [self hideOrDisplayContents];
-    
+
     [self setNeedsLayout];
     [self setNeedsDisplay:YES];
 }
@@ -169,26 +184,50 @@ var LEFT_SHADOW_INSET       = 3.0,
 {
     if (_hasShadow == shouldHaveShadow)
         return;
-    
+
     _hasShadow = shouldHaveShadow;
 
     if (_hasShadow)
     {
         _shadowView = [[CPShadowView alloc] initWithFrame:[self bounds]];
-                        
+
         [self addSubview:_shadowView];
-        
+
         [self setNeedsLayout];
         [self setNeedsDisplay:YES];
     }
     else
     {
         [_shadowView removeFromSuperview];
-        
+
         _shadowView = nil;
     }
-    
+
     [self hideOrDisplayContents];
+}
+
+/*!
+    Sets the type of image alignment that should be used to
+    render the image.
+    @param anImageAlignment the type of scaling to use
+*/
+- (void)setImageAlignment:(CPImageAlignment)anImageAlignment
+{
+    if (_imageAlignment == anImageAlignment)
+        return;
+
+    _imageAlignment = anImageAlignment;
+
+    if (![self image])
+        return;
+
+    [self setNeedsLayout];
+    [self setNeedsDisplay:YES];
+}
+
+- (unsigned)imageAlignment
+{
+    return _imageAlignment;
 }
 
 /*!
@@ -199,14 +238,14 @@ var LEFT_SHADOW_INSET       = 3.0,
 - (void)setImageScaling:(CPImageScaling)anImageScaling
 {
     [super setImageScaling:anImageScaling];
-    
+
 #if PLATFORM(DOM)
     if ([self currentValueForThemeAttribute:@"image-scaling"] === CPScaleToFit)
     {
         CPDOMDisplayServerSetStyleLeftTop(_DOMImageElement, NULL, 0.0, 0.0);
     }
 #endif
-    
+
     [self setNeedsLayout];
     [self setNeedsDisplay:YES];
 }
@@ -275,7 +314,7 @@ var LEFT_SHADOW_INSET       = 3.0,
     else
     {
         var size = [image size];
-        
+
         if (size.width == -1 && size.height == -1)
             return;
 
@@ -292,7 +331,7 @@ var LEFT_SHADOW_INSET       = 3.0,
             {
                 var imageRatio = size.width / size.height,
                     viewRatio = width / height;
-                    
+
                 if (viewRatio > imageRatio)
                     width = height * imageRatio;
                 else
@@ -309,7 +348,7 @@ var LEFT_SHADOW_INSET       = 3.0,
             width = size.width;
             height = size.height;
         }
-    
+
         if (imageScaling == CPScaleNone)
         {
 #if PLATFORM(DOM)
@@ -318,8 +357,46 @@ var LEFT_SHADOW_INSET       = 3.0,
 #endif
         }
 
-        var x = (boundsWidth - width) / 2.0,
-            y = (boundsHeight - height) / 2.0;
+        var x,
+            y;
+
+        switch (_imageAlignment)
+        {
+            case CPImageAlignLeft:
+            case CPImageAlignTopLeft:
+            case CPImageAlignBottomLeft:
+                x = 0.0;
+                break;
+
+            case CPImageAlignRight:
+            case CPImageAlignTopRight:
+            case CPImageAlignBottomRight:
+                x = boundsWidth - width;
+                break;
+
+            default:
+                x = (boundsWidth - width) / 2.0;
+                break;
+        }
+
+        switch (_imageAlignment)
+        {
+            case CPImageAlignTop:
+            case CPImageAlignTopLeft:
+            case CPImageAlignTopRight:
+                y = 0.0;
+                break;
+
+            case CPImageAlignBottom:
+            case CPImageAlignBottomLeft:
+            case CPImageAlignBottomRight:
+                y = boundsHeight - height;
+                break;
+
+            default:
+                y = (boundsHeight - height) / 2.0;
+                break;
+        }
 
 #if PLATFORM(DOM)
         CPDOMDisplayServerSetStyleLeftTop(_DOMImageElement, NULL, x, y);
@@ -327,7 +404,7 @@ var LEFT_SHADOW_INSET       = 3.0,
     }
 
     _imageRect = _CGRectMake(x, y, width, height);
-    
+
     if (_hasShadow)
         [_shadowView setFrame:_CGRectMake(x - LEFT_SHADOW_INSET, y - TOP_SHADOW_INSET, width + insetWidth, height + insetHeight)];
 }
@@ -365,20 +442,26 @@ var LEFT_SHADOW_INSET       = 3.0,
     return _isEditable;
 }
 
-- (void)performDragOperation:(CPDraggingInfo)aSender
+- (BOOL)performDragOperation:(CPDraggingInfo)aSender
 {
     var images = [CPKeyedUnarchiver unarchiveObjectWithData:[[aSender draggingPasteboard] dataForType:CPImagesPboardType]];
 
     if ([images count])
+    {
         [self setImage:images[0]];
+        [self sendAction:[self action] to:[self target]];
+    }
+
+    return YES;
 }
 
 @end
 
-var CPImageViewImageKey         = @"CPImageViewImageKey",
-    CPImageViewImageScalingKey  = @"CPImageViewImageScalingKey",
-    CPImageViewHasShadowKey     = @"CPImageViewHasShadowKey",
-    CPImageViewIsEditableKey    = @"CPImageViewIsEditableKey";
+var CPImageViewImageKey          = @"CPImageViewImageKey",
+    CPImageViewImageScalingKey   = @"CPImageViewImageScalingKey",
+    CPImageViewImageAlignmentKey = @"CPImageViewImageAlignmentKey",
+    CPImageViewHasShadowKey      = @"CPImageViewHasShadowKey",
+    CPImageViewIsEditableKey     = @"CPImageViewIsEditableKey";
 
 @implementation CPImageView (CPCoding)
 
@@ -403,7 +486,7 @@ var CPImageViewImageKey         = @"CPImageViewImageKey",
 #endif
 
     self = [super initWithCoder:aCoder];
-    
+
     if (self)
     {
 #if PLATFORM(DOM)
@@ -411,14 +494,15 @@ var CPImageViewImageKey         = @"CPImageViewImageKey",
 #endif
 
         [self setHasShadow:[aCoder decodeBoolForKey:CPImageViewHasShadowKey]];
-        
+        [self setImageAlignment:[aCoder decodeIntForKey:CPImageViewImageAlignmentKey]];
+
         if ([aCoder decodeBoolForKey:CPImageViewIsEditableKey] || NO)
             [self setEditable:YES];
 
         [self setNeedsLayout];
         [self setNeedsDisplay:YES];
     }
-    
+
     return self;
 }
 
@@ -429,22 +513,23 @@ var CPImageViewImageKey         = @"CPImageViewImageKey",
 */
 - (void)encodeWithCoder:(CPCoder)aCoder
 {
-    // We do this in order to avoid encoding the _shadowView, which 
+    // We do this in order to avoid encoding the _shadowView, which
     // should just automatically be created programmatically as needed.
     if (_shadowView)
     {
         var actualSubviews = _subviews;
-        
+
         _subviews = [_subviews copy];
         [_subviews removeObjectIdenticalTo:_shadowView];
     }
-        
+
     [super encodeWithCoder:aCoder];
-    
+
     if (_shadowView)
         _subviews = actualSubviews;
-    
+
     [aCoder encodeBool:_hasShadow forKey:CPImageViewHasShadowKey];
+    [aCoder encodeInt:_imageAlignment forKey:CPImageViewImageAlignmentKey];
 
     if (_isEditable)
         [aCoder encodeBool:_isEditable forKey:CPImageViewIsEditableKey];

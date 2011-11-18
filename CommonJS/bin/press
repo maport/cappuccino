@@ -10,8 +10,10 @@ require("narwhal").ensureEngine("rhino");
 var FILE = require("file");
 var OS = require("os");
 
-var stream = require("term").stream;
-var parser = new (require("args").Parser)();
+var CACHEMANIFEST = require("objective-j/cache-manifest");
+
+var stream = require("narwhal/term").stream;
+var parser = new (require("narwhal/args").Parser)();
 
 parser.usage("INPUT_PROJECT OUTPUT_PROJECT");
 parser.help("Analyze and strip unused files from a Cappuccino project's .sj bundles.");
@@ -31,10 +33,19 @@ parser.option("-f", "--force", "force")
    .set(true)
    .help("Force overwriting OUTPUT_PROJECT if it exists");
 
+parser.option("--index", "index")
+   .def("index.html")
+   .set()
+   .help("The root HTML file to modify (default: index.html) (NOTE: currently only used by '--manifest' option)");
+
 parser.option("-p", "--pngcrush", "png")
     .def(false)
     .set(true)
     .help("Run pngcrush on all PNGs (pngcrush must be installed!)");
+
+parser.option("--manifest", "manifest")
+    .set(true)
+    .help("Generate HTML5 cache manifest.");
 
 parser.option("-v", "--verbose", "verbose")
     .def(false)
@@ -119,7 +130,12 @@ function press(rootPath, outputPath, options) {
 
     // read in the default theme name, and attempt to get its size
     var themeName = outputInfoPlist.valueForKey("CPDefaultTheme") || "Aristo",
+        themePath = nil;
+
+    if (themeName === "Aristo")
         themePath = FILE.join(outputPath, options.frameworks, "AppKit", "Resources", themeName+".blend");
+    else
+        themePath = FILE.join(outputPath, "Resources", themeName + ".blend");
 
     if (FILE.exists(themePath))
     {
@@ -145,6 +161,12 @@ function press(rootPath, outputPath, options) {
 
     if (options.png) {
         pngcrushDirectory(outputPath);
+    }
+
+    if (options.manifest) {
+        CACHEMANIFEST.generateManifest(outputPath, {
+            index : outputPath.join(options.index)
+        });
     }
 }
 

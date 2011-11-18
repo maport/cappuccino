@@ -20,10 +20,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+@import "CPDictionary.j"
 @import "CPObject.j"
+@import "CPString.j"
+@import "CPURL.j"
 
-
-/*! 
+/*!
     @class CPURLRequest
     @ingroup foundation
     @brief Contains data obtained during a request made with CPURLConnection.
@@ -34,7 +36,7 @@
 @implementation CPURLRequest : CPObject
 {
     CPURL       _URL;
-    
+
     // FIXME: this should be CPData
     CPString        _HTTPBody;
     CPString        _HTTPMethod;
@@ -59,7 +61,7 @@
 - (id)initWithURL:(CPURL)aURL
 {
     self = [super init];
-    
+
     if (self)
     {
         [self setURL:aURL];
@@ -67,12 +69,12 @@
         _HTTPBody = @"";
         _HTTPMethod = @"GET";
         _HTTPHeaderFields = [CPDictionary dictionary];
-        
-        [self setValue:"Thu, 1 Jan 1970 00:00:00 GMT" forHTTPHeaderField:"If-Modified-Since"];
+
+        [self setValue:"Thu, 01 Jan 1970 00:00:00 GMT" forHTTPHeaderField:"If-Modified-Since"];
         [self setValue:"no-cache" forHTTPHeaderField:"Cache-Control"];
         [self setValue:"XMLHttpRequest" forHTTPHeaderField:"X-Requested-With"];
     }
-    
+
     return self;
 }
 
@@ -129,7 +131,7 @@
 }
 
 /*!
-    Returns a dictionar of the http header fields
+    Returns a dictionary of the http header fields
 */
 - (CPDictionary)allHTTPHeaderFields
 {

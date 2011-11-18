@@ -237,6 +237,13 @@ CFBundle.prototype.isLoading = function()
 
 DISPLAY_NAME(CFBundle.prototype.isLoading);
 
+CFBundle.prototype.isLoaded = function()
+{
+    return this._loadStatus & CFBundleLoaded;
+}
+
+DISPLAY_NAME(CFBundle.prototype.isLoaded);
+
 CFBundle.prototype.load = function(/*BOOL*/ shouldExecute)
 {
     if (this._loadStatus !== CFBundleUnloaded)
@@ -339,7 +346,7 @@ function loadExecutableAndResources(/*Bundle*/ aBundle, /*BOOL*/ shouldExecute)
         if ((typeof CPApp === "undefined" || !CPApp || !CPApp._finishedLaunching) &&
              typeof OBJJ_PROGRESS_CALLBACK === "function" && CPApplicationSizeInBytes)
         {
-            OBJJ_PROGRESS_CALLBACK(MAX(MIN(1.0, CFTotalBytesLoaded / CPApplicationSizeInBytes), 0.0), CPApplicationSizeInBytes, aBundle.path())
+            OBJJ_PROGRESS_CALLBACK(MAX(MIN(1.0, CFTotalBytesLoaded / CPApplicationSizeInBytes), 0.0), CPApplicationSizeInBytes, aBundle.bundlePath())
         }
 
         if (aBundle._loadStatus === CFBundleLoading)
@@ -437,12 +444,13 @@ function loadSpritedImagesForBundle(/*Bundle*/ aBundle, success, failure)
             CFTotalBytesLoaded += anEvent.request.responseText().length;
             decompileStaticFile(aBundle, anEvent.request.responseText(), spritedImagesURL);
             aBundle._loadStatus &= ~CFBundleLoadingSpritedImages;
-            success();
         }
         catch(anException)
         {
             failure(anException);
         }
+
+        success();
     }, failure);
 }
 
@@ -511,7 +519,8 @@ function CFBundleNotifySpriteSupportListeners()
 
 function CFBundleTestSpriteTypes(/*Array*/ spriteTypes)
 {
-    if (spriteTypes.length < 2)
+    // If we don't support Images, then clearly we don't support sprites.
+    if (!("Image" in global) || spriteTypes.length < 2)
     {
         CFBundleSupportedSpriteType = CFBundleNoSpriteType;
         CFBundleNotifySpriteSupportListeners();
@@ -634,9 +643,9 @@ function decompileStaticFile(/*Bundle*/ aBundle, /*String*/ aString, /*String*/ 
 
                 if (CFBundleSupportedSpriteType === CFBundleMHTMLUncachedSpriteType)
                 {
-                    var exclamationIndex = URLString.indexOf("!"),
-                        firstPart = URLString.substring(0, exclamationIndex),
-                        lastPart = URLString.substring(exclamationIndex);
+                    var exclamationIndex = mappedURLString.indexOf("!"),
+                        firstPart = mappedURLString.substring(0, exclamationIndex),
+                        lastPart = mappedURLString.substring(exclamationIndex);
 
                     mappedURLString = firstPart + "?" + CFCacheBuster + lastPart;
                 }

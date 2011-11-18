@@ -28,8 +28,6 @@
 @import "CPPopUpButton.j"
 @import "CPToolbarItem.j"
 
-#include "CoreGraphics/CGGeometry.h"
-
 
 /*
     @global
@@ -52,8 +50,8 @@ CPToolbarDisplayModeIconOnly            = 2;
 */
 CPToolbarDisplayModeLabelOnly           = 3;
 
-var CPToolbarsByIdentifier              = nil;
-var CPToolbarConfigurationsByIdentifier = nil;
+var CPToolbarsByIdentifier              = nil,
+    CPToolbarConfigurationsByIdentifier = nil;
 
 /*!
     @ingroup appkit
@@ -329,7 +327,11 @@ var CPToolbarConfigurationsByIdentifier = nil;
     return _itemsSortedByVisibilityPriority;
 }
 
-- (void)validateVisibleToolbarItems
+/*!
+    Validates the visible toolbar items by sending a validate message to
+    each visible toolbar item.
+*/
+- (void)validateVisibleItems
 {
     var toolbarItems = [self visibleItems],
         count = [toolbarItems count];
@@ -462,11 +464,18 @@ var CPToolbarIdentifierKey              = @"CPToolbarIdentifierKey",
         // Because we don't know if a delegate will be set later (it is optional
         // as of OS X 10.5), we need to call -_reloadToolbarItems here.
         // In order to load any toolbar items that may have been configured in the
-        // Cib. Unfortunatelly this means that if there is a delegate
+        // Cib. Unfortunately this means that if there is a delegate
         // specified, it will be read later and the resulting call to -setDelegate:
         // will cause -_reloadToolbarItems] to run again :-(
         // FIXME: Can we make this better?
-        [self _reloadToolbarItems];
+
+        // Do this at the end of the run loop to allow all the cib-stuff to
+        // finish (establishing connections, etc.).
+        [[CPRunLoop currentRunLoop]
+            performSelector:@selector(_reloadToolbarItems)
+                     target:self
+                   argument:nil
+                      order:0 modes:[CPDefaultRunLoopMode]];
     }
 
     return self;
@@ -559,6 +568,7 @@ var _CPToolbarItemInfoMake = function(anIndex, aView, aLabel, aMinWidth)
 
         [_additionalItemsButton setImagePosition:CPImageOnly];
         [[_additionalItemsButton menu] setShowsStateColumn:NO];
+        [[_additionalItemsButton menu] setAutoenablesItems:NO];
 
         [_additionalItemsButton setAlternateImage:_CPToolbarViewExtraItemsAlternateImage];
     }
@@ -657,7 +667,7 @@ var _CPToolbarItemInfoMake = function(anIndex, aView, aLabel, aMinWidth)
 
     // Determine all the items that have flexible width.
     // Also determine the height of the toolbar.
-    var count = _visibleItems.length
+    var count = _visibleItems.length,
         flexibleItemIndexes = [CPIndexSet indexSet];
 
     while (count--)
@@ -789,18 +799,30 @@ var _CPToolbarItemInfoMake = function(anIndex, aView, aLabel, aMinWidth)
 
             hasNonSeparatorItem = YES;
 
-            [_additionalItemsButton addItemWithTitle:[item label]];
+            var menuItem = [[CPMenuItem alloc] initWithTitle:[item label] action:@selector(didSelectMenuItem:) keyEquivalent:nil];
 
-            var menuItem = [_additionalItemsButton itemArray][index + 1];
-
+            [menuItem setRepresentedObject:item];
             [menuItem setImage:[item image]];
+            [menuItem setTarget:self];
+            [menuItem setEnabled:[item isEnabled]];
 
-            [menuItem setTarget:[item target]];
-            [menuItem setAction:[item action]];
+            [_additionalItemsButton addItem:menuItem];
         }
     }
     else
         [_additionalItemsButton removeFromSuperview];
+}
+
+/*
+    Used privately.
+    @ignore
+*/
+
+- (void)didSelectMenuItem:(id)aSender
+{
+    var toolbarItem = [aSender representedObject];
+
+    [CPApp sendAction:[toolbarItem action] to:[toolbarItem target] from:toolbarItem];
 }
 
 - (void)reloadToolbarItems
@@ -827,6 +849,10 @@ var _CPToolbarItemInfoMake = function(anIndex, aView, aLabel, aMinWidth)
             view = [[_CPToolbarItemView alloc] initWithToolbarItem:item toolbar:self];
 
         _viewsForToolbarItems[[item UID]] = view;
+
+        if ([item toolTip] && [view respondsToSelector:@selector(setToolTip:)])
+            [view setToolTip:[item toolTip]];
+
         [self addSubview:view];
 
         _minWidth += [view minSize].width + TOOLBAR_ITEM_MARGIN;
@@ -970,7 +996,7 @@ var TOP_MARGIN      = 5.0,
         {
             _imageView = [[CPImageView alloc] initWithFrame:[self bounds]];
 
-            [_imageView setImageScaling:CPScaleNone];
+            [_imageView setImageScaling:CPScaleProportionally];
 
             [self addSubview:_imageView];
         }
@@ -989,7 +1015,7 @@ var TOP_MARGIN      = 5.0,
     _labelSize = [_labelField frame].size;
 
     _minSize = CGSizeMake(MAX(_labelSize.width, minSize.width), _labelSize.height + minSize.height + LABEL_MARGIN + TOP_MARGIN);
-    _maxSize = CGSizeMake(MAX(_labelSize.width, minSize.width), 100000000.0);
+    _maxSize = CGSizeMake(MAX(_labelSize.width, maxSize.width), 100000000.0);
 
     [_toolbar tile];
 }
@@ -1051,6 +1077,8 @@ var TOP_MARGIN      = 5.0,
         [_imageView setAlphaValue:0.5];
         [_labelField setAlphaValue:0.5];
     }
+
+    [_toolbar tile];
 }
 
 - (CPColor)FIXME_labelColor

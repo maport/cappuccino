@@ -1,3 +1,24 @@
+/*
+ * _CPCornerView.j
+ * AppKit
+ *
+ * Created by Ross Boucher.
+ * Copyright 2009, 280 North, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
 
 @import "CPView.j"
 
@@ -5,31 +26,60 @@
 {
 }
 
-- (id)initWithFrame:(CGRect)aFrame
++ (CPString)defaultThemeClass
 {
-    if (self = [super initWithFrame:aFrame])
-    {
-        [self setBackgroundColor:[CPColor colorWithPatternImage:CPAppKitImage("tableview-headerview.png", CGSizeMake(1.0, 23.0))]];
-    }
-    
-    return self;
+    return @"cornerview";
+}
+
++ (id)themeAttributes
+{
+    return [CPDictionary dictionaryWithObjects:[[CPNull null], [CPNull null]]
+                                       forKeys:[@"background-color", "divider-color"]];
 }
 
 - (void)drawRect:(CGRect)aRect
 {
-    var context = [[CPGraphicsContext currentContext] graphicsPort];
+    var context = [[CPGraphicsContext currentContext] graphicsPort],
+        color = [self currentValueForThemeAttribute:@"divider-color"];
 
-    CGContextSetStrokeColor(context, [CPColor colorWithHexString:@"dce0e2"]);
-    
-    var points = [ 
-                    CGPointMake(aRect.origin.x, aRect.origin.y),
-                    CGPointMake(aRect.origin.x + aRect.size.width, aRect.origin.y),
-                    
-                    CGPointMake(aRect.origin.x, aRect.origin.y + 0.5), 
-                    CGPointMake(aRect.origin.x, aRect.origin.y + aRect.size.height)
-                 ];
-                 
-    CGContextStrokeLineSegments(context, points, 2);
+    CGContextSetLineWidth(context, 1);
+    CGContextSetStrokeColor(context, [self currentValueForThemeAttribute:@"divider-color"]);
+
+    CGContextMoveToPoint(context, _CGRectGetMinX(aRect) + 0.5, ROUND(_CGRectGetMinY(aRect)));
+    CGContextAddLineToPoint(context, _CGRectGetMinX(aRect) + 0.5, ROUND(_CGRectGetMaxY(aRect)));
+
+    CGContextClosePath(context);
+    CGContextStrokePath(context);
+}
+
+- (void)layoutSubviews
+{
+    [self setBackgroundColor:[self currentValueForThemeAttribute:@"background-color"]];
+}
+
+- (void)_init
+{
+    [self setBackgroundColor:[self currentValueForThemeAttribute:@"background-color"]];
+}
+
+- (id)initWithFrame:(CGRect)aFrame
+{
+    self = [super initWithFrame:aFrame]
+
+    if (self)
+        [self _init];
+
+    return self;
+}
+
+- (id)initWithCoder:(CPCoder)aCoder
+{
+    self = [super initWithCoder:aCoder];
+
+    if (self)
+        [self _init];
+
+    return self;
 }
 
 @end

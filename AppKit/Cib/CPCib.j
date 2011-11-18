@@ -38,7 +38,7 @@ CPCibOwner              = @"CPCibOwner",
 CPCibTopLevelObjects    = @"CPCibTopLevelObjects",
 CPCibReplacementClasses = @"CPCibReplacementClasses",
 CPCibExternalObjects    = @"CPCibExternalObjects";
-    
+
 var CPCibObjectDataKey  = @"CPCibObjectDataKey";
 
 /*!
@@ -87,7 +87,7 @@ var CPCibObjectDataKey  = @"CPCibObjectDataKey";
 {
     if (![aName hasSuffix:@".cib"])
         aName = [aName stringByAppendingString:@".cib"];
-    
+
     // If aBundle is nil, use mainBundle, but ONLY for searching for the nib, not for resources later.
     self = [self initWithContentsOfURL:[aBundle || [CPBundle mainBundle] pathForResource:aName]];
 
@@ -150,7 +150,7 @@ var CPCibObjectDataKey  = @"CPCibObjectDataKey";
 
     var topLevelObjects = [anExternalNameTable objectForKey:CPCibTopLevelObjects];
 
-    [objectData instantiateWithOwner:owner topLevelObjects:topLevelObjects]
+    [objectData instantiateWithOwner:owner topLevelObjects:topLevelObjects];
     [objectData establishConnectionsWithOwner:owner topLevelObjects:topLevelObjects];
     [objectData awakeWithOwner:owner topLevelObjects:topLevelObjects];
 
@@ -171,12 +171,17 @@ var CPCibObjectDataKey  = @"CPCibObjectDataKey";
 
 - (void)connection:(CPURLConnection)aConnection didReceiveData:(CPString)data
 {
+    // FIXME: Why aren't we getting connection:didFailWithError:
+    if (!data)
+        return [self connection:aConnection didFailWithError:nil];
+
     _data = [CPData dataWithRawString:data];
 }
 
 - (void)connection:(CPURLConnection)aConnection didFailWithError:(CPError)anError
 {
-    alert("cib: connection failed.");
+    if ([_loadDelegate respondsToSelector:@selector(cibDidFailToLoad:)])
+        [_loadDelegate cibDidFailToLoad:self];
 
     _loadDelegate = nil;
 }
